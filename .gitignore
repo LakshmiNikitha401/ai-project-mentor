@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+ai_project_mentor_platform_store.json
+.env
+venv/
