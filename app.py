@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import re
 import secrets
 import hashlib
@@ -49,6 +50,7 @@ LOCAL_STORE_PATH = Path("ai_project_mentor_platform_store.json")
 RESULTS_PER_PAGE = 8
 
 def get_secret_value(*paths):
+    # 1) .streamlit/secrets.toml (local dev)
     for path in paths:
         try:
             value = st.secrets
@@ -58,6 +60,26 @@ def get_secret_value(*paths):
                 return str(value)
         except Exception:
             continue
+    # 2) Environment variables (Render / any host — st.secrets does NOT read env vars)
+    env_names = {
+        ("supabase", "URL"): ["SUPABASE_URL"],
+        ("supabase", "KEY"): ["SUPABASE_KEY"],
+        ("gemini", "API_KEY"): ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        ("GEMINI_API_KEY",): ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        ("GOOGLE_API_KEY",): ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+        ("gemini", "MODEL"): ["GEMINI_MODEL"],
+        ("GEMINI_MODEL",): ["GEMINI_MODEL"],
+        ("email", "SMTP_HOST"): ["SMTP_HOST", "EMAIL_SMTP_HOST"],
+        ("email", "SMTP_PORT"): ["SMTP_PORT", "EMAIL_SMTP_PORT"],
+        ("email", "SMTP_USER"): ["SMTP_USER", "EMAIL_SMTP_USER"],
+        ("email", "SMTP_PASSWORD"): ["SMTP_PASSWORD", "EMAIL_SMTP_PASSWORD"],
+        ("email", "FROM_EMAIL"): ["FROM_EMAIL", "EMAIL_FROM", "EMAIL_FROM_EMAIL"],
+    }
+    for path in paths:
+        for name in env_names.get(tuple(path), []):
+            value = os.environ.get(name, "")
+            if value:
+                return str(value).strip()
     return ""
 
 SUPABASE_URL = get_secret_value(("supabase", "URL"))
@@ -837,7 +859,7 @@ def local_signup(full_name, email, password):
     auth = store.setdefault("_local_auth", {})
     key = _safe_key(email)
     if key in auth:
-        return "An account with this email already exists locally."
+        return "__ACCOUNT_EXISTS__"
     auth[key] = {"full_name": full_name, "password": _hash_password(password)}
     store["_local_auth"] = auth
     _write_store(store)
@@ -852,19 +874,30 @@ def local_login(email, password):
     return "Invalid email or password."
 
 def signup_user(full_name, email, password):
-    """Try Supabase first; fall back to local store if unavailable."""
+    """Try Supabase first; fall back to local store if unavailable.
+    Returns (error, created): error is None on success. When the account already
+    exists, error is "__ACCOUNT_EXISTS__" and created is False — callers treat
+    that as a successful verification (the user can simply log in).
+    """
     if supabase:
         try:
             supabase.auth.sign_up({
                 "email": email, "password": password,
                 "options": {"data": {"full_name": full_name}},
             })
-            return None
+            return None, True
         except Exception as e:
             err = str(e)
             if "already registered" in err.lower() or "already exists" in err.lower():
-                return err
-    return local_signup(full_name, email, password)
+                return "__ACCOUNT_EXISTS__", False
+    err = local_signup(full_name, email, password)
+    if err:
+        return err, False
+    # If Supabase signup silently failed above, make sure the local fallback
+    # account exists so login always works.
+    if not supabase:
+        local_login(email, password)
+    return None, True
 
 def login_user(email, password):
     """Try Supabase first; fall back to local auth if unavailable/failed."""
@@ -876,13 +909,27 @@ def login_user(email, password):
             pass
     return local_login(email, password)
 
+def account_exists(email):
+    """True when an account for this email is registered in Supabase or locally."""
+    email = str(email or "").strip().lower()
+    if not email:
+        return False
+    if supabase:
+        try:
+            existing = supabase.table("profiles").select("id").eq("email", email).limit(1).execute()<arg_value><b88a6f17>            if existing and existing.data:
+                return True
+        except Exception:
+            pass
+    return _safe_key(email) in _load_store().get("_local_auth", {})
+
 # ======================================================
 # EMAIL NOTIFICATIONS
 # ======================================================
 def send_email_notification(to_email, subject, body):
     if not EMAIL_ENABLED or not to_email:
         st.session_state["last_email_status"] = (
-            "Email not sent: SMTP is not configured in .streamlit/secrets.toml."
+            "Email not sent: SMTP is not configured. Set the [email] block in .streamlit/secrets.toml "
+            "(local) or the SMTP_* environment variables (Render)."
         )
         return False
     try:
@@ -2203,11 +2250,13 @@ def _otp_email_body(name, code):
 
 def _render_signup_form():
     """Step 1: details form -> sends a 6-digit OTP to the email."""
-    full_name = st.text_input("Full Name", placeholder="Enter your full name", key="su_name")
-    email = st.text_input("Email", placeholder="you@example.com", key="su_email")
-    password = st.text_input("Password", type="password", placeholder="Create password (min 6 chars)", key="su_pass")
-    confirm = st.text_input("Confirm Password", type="password", placeholder="Re-enter password", key="su_confirm")
-    if st.button("📧 Send Verification Code", type="primary", use_container_width=True):
+    with st.form("signup_form", clear_on_submit=False):
+        full_name = st.text_input("Full Name", placeholder="Enter your full name", key="su_name")
+        email = st.text_input("Email", placeholder="you@example.com", key="su_email")
+        password = st.text_input("Password", type="password", placeholder="Create password (min 6 chars)", key="su_pass")
+        confirm = st.text_input("Confirm Password", type="password", placeholder="Re-enter password", key="su_confirm")
+        submit = st.form_submit_button("📧 Send Verification Code", type="primary", use_container_width=True)
+    if submit:
         if not full_name or not email or not password or not confirm:
             st.error("Please fill all fields.")
         elif "@" not in email or "." not in email.split("@")[-1]:
@@ -2217,6 +2266,10 @@ def _render_signup_form():
         elif len(password) < 6:
             st.error("Password must be at least 6 characters.")
         else:
+            email_norm = email.strip().lower()
+            if account_exists(email_norm):
+                st.error("An account with this email already exists. Please log in instead.")
+                return
             code = _new_otp_code()
             st.session_state["signup_otp"] = {
                 "code": code,
@@ -2235,10 +2288,11 @@ def _render_signup_form():
                 st.rerun()
             else:
                 st.session_state.pop("signup_otp", None)
-                st.error("Could not send the verification email. Check the [email] SMTP settings in .streamlit/secrets.toml.")
+                st.error(st.session_state.get("last_email_status", "Could not send the verification email. Check the SMTP settings."))
 
 def _verify_signup_otp(code):
-    """Step 2 verification: on success creates the account. Returns error string or None."""
+    """Step 2 verification: on success creates the account AND logs the user in.
+    Returns error string or None."""
     data = st.session_state.get("signup_otp")
     if not data:
         return "No verification pending. Fill the signup form again."
@@ -2247,16 +2301,29 @@ def _verify_signup_otp(code):
         return "That code expired. Send a new one."
     if not code or str(code).strip() != data["code"]:
         return "Incorrect code. Check your email and try again."
-    err = signup_user(data["name"], data["email"], data["password"])
-    if err:
+    email = data["email"]
+    err, created = signup_user(data["name"], email, data["password"])
+    if err and err != "__ACCOUNT_EXISTS__":
         return err
-    send_email_notification(
-        data["email"],
-        "Welcome to AI Project Mentor",
-        f"Hi {data['name']},\n\nYour email is verified and your account is ready. Log in and start building!\n\n— AI Project Mentor",
-    )
-    st.session_state["post_verify_email"] = data["email"]
-    st.session_state["signup_done"] = True
+    # Log the user straight in (this also covers the "account already exists"
+    # case: the email is verified via OTP, so signing in is safe).
+    login_err = login_user(email, data["password"])
+    if login_err:
+        # Could not auto-login (e.g. password differs on an existing account):
+        # send them to the login form with the email prefilled instead of an error.
+        st.session_state["post_verify_email"] = email
+        st.session_state["signup_done"] = True
+    else:
+        st.session_state["user"] = email
+        load_local_state_for_user(email)
+        st.session_state["page"] = "home"
+        st.session_state["just_signed_up"] = True
+    if created:
+        send_email_notification(
+            email,
+            "Welcome to AI Project Mentor",
+            f"Hi {data['name']},\n\nYour email is verified and your account is ready. Log in and start building!\n\n— AI Project Mentor",
+        )
     st.session_state.pop("signup_otp", None)
     st.session_state.pop("otp_notice", None)
     return None
@@ -2272,30 +2339,36 @@ def _render_otp_step():
         f"<div class='form-sub'>We sent a 6-digit code to <b>{otp['email']}</b>. It expires in ~{mins_left} min.</div>",
         unsafe_allow_html=True,
     )
-    code = st.text_input("Verification code", placeholder="Enter 6-digit code", max_chars=6, key="otp_code")
-    col_v, col_r, col_b = st.columns([2, 1, 1])
-    with col_v:
-        if st.button("Verify & Create Account", type="primary", use_container_width=True):
-            err = _verify_signup_otp(code)
-            if err:
-                st.error(err)
-            else:
-                st.rerun()
-    with col_r:
-        if st.button("Resend", use_container_width=True):
-            otp["code"] = _new_otp_code()
-            otp["expires"] = datetime.now() + timedelta(minutes=10)
-            if send_email_notification(otp["email"], "Your AI Project Mentor verification code",
-                                       _otp_email_body(otp["name"], otp["code"])):
-                st.session_state["otp_notice"] = f"New code sent to {otp['email']}"
-                st.rerun()
-            else:
-                st.error("Could not resend the email. Check the [email] SMTP settings.")
-    with col_b:
-        if st.button("Back", use_container_width=True):
-            st.session_state.pop("signup_otp", None)
-            st.session_state.pop("otp_notice", None)
+    # st.form is essential: without it the first button click only commits the
+    # text input (Streamlit's two-step update), so users had to click twice.
+    with st.form("otp_form", clear_on_submit=False):
+        code = st.text_input("Verification code", placeholder="Enter 6-digit code", max_chars=6, key="otp_code")
+        col_v, col_r, col_b = st.columns([2, 1, 1])
+        with col_v:
+            verify = st.form_submit_button("Verify & Create Account", type="primary", use_container_width=True)
+        with col_r:
+            resend = st.form_submit_button("Resend", use_container_width=True)
+        with col_b:
+            back = st.form_submit_button("Back", use_container_width=True)
+    if verify:
+        err = _verify_signup_otp(code)
+        if err:
+            st.error(err)
+        else:
             st.rerun()
+    elif resend:
+        otp["code"] = _new_otp_code()
+        otp["expires"] = datetime.now() + timedelta(minutes=10)
+        if send_email_notification(otp["email"], "Your AI Project Mentor verification code",
+                                   _otp_email_body(otp["name"], otp["code"])):
+            st.session_state["otp_notice"] = f"New code sent to {otp['email']}"
+            st.rerun()
+        else:
+            st.error("Could not resend the email. Check the SMTP settings.")
+    elif back:
+        st.session_state.pop("signup_otp", None)
+        st.session_state.pop("otp_notice", None)
+        st.rerun()
 
 def show_login_page():
     # The outer .login-scope marker narrows the block-container. The card itself is a
@@ -2315,6 +2388,7 @@ def show_login_page():
         if post_verify_email:
             st.session_state["auth_mode"] = "Login"
             st.session_state["login_email"] = post_verify_email
+            st.rerun()
         if st.session_state.get("auth_mode") not in ("Login", "Signup"):
             st.session_state["auth_mode"] = "Login"
 
@@ -2323,10 +2397,12 @@ def show_login_page():
 
         if mode == "Login":
             if st.session_state.pop("signup_done", None):
-                st.success("Account verified! Log in to continue.")
-            email = st.text_input("Email", placeholder="you@example.com", key="login_email")
-            password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass")
-            if st.button("Login", type="primary", use_container_width=True):
+                st.success("Account verified! Please log in to continue.")
+            with st.form("login_form", clear_on_submit=False):
+                email = st.text_input("Email", placeholder="you@example.com", key="login_email")
+                password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass")
+                login_submit = st.form_submit_button("Login", type="primary", use_container_width=True)
+            if login_submit:
                 if not email or not password:
                     st.error("Enter email and password.")
                 else:
