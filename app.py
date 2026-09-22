@@ -1,11 +1,9 @@
 import io
 import json
-import os
 import re
 import secrets
 import hashlib
 import smtplib
-import ssl
 import concurrent.futures
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
@@ -51,7 +49,6 @@ LOCAL_STORE_PATH = Path("ai_project_mentor_platform_store.json")
 RESULTS_PER_PAGE = 8
 
 def get_secret_value(*paths):
-    # 1) .streamlit/secrets.toml (local dev)
     for path in paths:
         try:
             value = st.secrets
@@ -61,28 +58,6 @@ def get_secret_value(*paths):
                 return str(value)
         except Exception:
             continue
-    # 2) Environment variables (Render / any host)
-    env_names = {
-        ("supabase", "URL"): ["SUPABASE_URL"],
-        ("supabase", "KEY"): ["SUPABASE_KEY"],
-        ("gemini", "API_KEY"): ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-        ("GEMINI_API_KEY",): ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-        ("GOOGLE_API_KEY",): ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
-        ("gemini", "MODEL"): ["GEMINI_MODEL"],
-        ("GEMINI_MODEL",): ["GEMINI_MODEL"],
-        ("email", "SMTP_HOST"): ["SMTP_HOST", "EMAIL_SMTP_HOST"],
-        ("email", "SMTP_PORT"): ["SMTP_PORT", "EMAIL_SMTP_PORT"],
-        ("email", "SMTP_USER"): ["SMTP_USER", "EMAIL_SMTP_USER"],
-        ("email", "SMTP_PASSWORD"): ["SMTP_PASSWORD", "EMAIL_SMTP_PASSWORD"],
-        ("email", "FROM_EMAIL"): ["FROM_EMAIL", "EMAIL_FROM", "EMAIL_FROM_EMAIL"],
-        ("email", "RESEND_API_KEY"): ["RESEND_API_KEY"],
-        ("RESEND_API_KEY",): ["RESEND_API_KEY"],
-    }
-    for path in paths:
-        for name in env_names.get(tuple(path), []):
-            value = os.environ.get(name, "")
-            if value:
-                return str(value).strip()
     return ""
 
 SUPABASE_URL = get_secret_value(("supabase", "URL"))
@@ -100,25 +75,12 @@ GEMINI_API_KEY = get_secret_value(
     ("GOOGLE_API_KEY",),
 )
 
-SMTP_HOST = get_secret_value(("email", "SMTP_HOST")) or "smtp.gmail.com"
+SMTP_HOST = get_secret_value(("email", "SMTP_HOST"))
 SMTP_PORT = int(get_secret_value(("email", "SMTP_PORT")) or 587)
 SMTP_USER = get_secret_value(("email", "SMTP_USER"))
-SMTP_PASSWORD = get_secret_value(("email", "SMTP_PASSWORD")).replace(" ", "")
+SMTP_PASSWORD = get_secret_value(("email", "SMTP_PASSWORD"))
 FROM_EMAIL = get_secret_value(("email", "FROM_EMAIL")) or SMTP_USER
 EMAIL_ENABLED = bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD and FROM_EMAIL)
-
-# Resend (HTTPS email API — works on Render where SMTP is blocked)
-RESEND_API_KEY = get_secret_value(("email", "RESEND_API_KEY"), ("RESEND_API_KEY",))
-RESEND_FROM = get_secret_value(("email", "RESEND_FROM")) or "onboarding@resend.dev"
-
-# Startup diagnostic (visible in Render logs)
-print(
-    f"STARTUP: EMAIL_ENABLED={EMAIL_ENABLED} HOST={SMTP_HOST} PORT={SMTP_PORT} "
-    f"USER={SMTP_USER} PASS_LEN={len(SMTP_PASSWORD)} FROM={FROM_EMAIL} "
-    f"RESEND={'yes' if RESEND_API_KEY else 'no'} "
-    f"SUPABASE={'yes' if supabase else 'no'} GEMINI={'yes' if GEMINI_API_KEY else 'no'}",
-    flush=True,
-)
 
 if genai and GEMINI_API_KEY:
     try:
@@ -127,7 +89,7 @@ if genai and GEMINI_API_KEY:
         pass
 
 # ======================================================
-# DOMAIN DATA
+# DOMAIN DATA (Explore button)
 # ======================================================
 DOMAINS = {
     "Artificial Intelligence": {
@@ -216,6 +178,7 @@ DOMAINS = {
     },
 }
 
+# Query normalization for the domain/combo input
 ALIASES = {
     "ai": "artificial intelligence",
     "ml": "machine learning",
@@ -273,12 +236,23 @@ def init_state():
 init_state()
 
 # ======================================================
-# CSS
+# CSS — slate + muted teal dark theme
 # ======================================================
 st.markdown("""
 <style>
 #MainMenu, footer, header {visibility: hidden;}
 
+/* ============================================================
+   Slate + muted teal — restrained professional dark theme.
+   Background:  #0a0e14
+   Surface:     #12171f
+   Surface2:    #1a212b
+   Border:      #232b38
+   Accent:      #0f766e  (muted teal)
+   Accent hover:#115e59
+   Text:        #e6edf3
+   Muted:       #8b98a9
+   ============================================================ */
 .stApp {
     background:
         radial-gradient(ellipse 80% 50% at 50% -10%, rgba(15,118,110,0.06), transparent 60%),
@@ -295,6 +269,8 @@ html {font-size: 106%;}
     padding-right: 2rem;
 }
 
+/* Home page: a bit wider than the default, but still leaves breathing room
+   on both sides so it reads like a real product page, not a stretched app. */
 .home-scope {height: 0;}
 .block-container:has(.home-scope) {
     max-width: 1440px !important;
@@ -310,6 +286,9 @@ html {font-size: 106%;}
 }
 .login-scope {height: 0;}
 
+/* ============================================================
+   Topbar
+   ============================================================ */
 .topbar-brand {display: flex; align-items: center; gap: 0.65rem; min-height: 44px;}
 .topbar-logo {
     width: 32px; height: 32px; border-radius: 8px;
@@ -346,6 +325,8 @@ html {font-size: 106%;}
     border-radius: 1px;
 }
 
+/* Tighten the topbar action group: kill extra column padding so the two buttons
+   sit in a small right-aligned cluster instead of drifting to the far edge. */
 .stApp [data-testid="stHorizontalBlock"]:has(.topbar-brand) > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"] {
     justify-content: flex-end;
     gap: 8px !important;
@@ -365,6 +346,9 @@ html {font-size: 106%;}
     margin: 0.75rem 0 1.75rem;
 }
 
+/* ============================================================
+   Menu drawer
+   ============================================================ */
 [data-testid="stDialog"] div[role="dialog"] {
     position: fixed !important; top: 0 !important; right: 0 !important; left: auto !important;
     height: 100vh !important; max-height: 100vh !important;
@@ -385,6 +369,9 @@ html {font-size: 106%;}
 }
 [data-testid="stDialog"] .stButton > button:hover {background: #1a212b; border-color: #2f3a4a;}
 
+/* ============================================================
+   Typography blocks
+   ============================================================ */
 .top-label {
     text-align: center; color: #8b98a9; font-size: 0.72rem; font-weight: 700;
     letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 1.25rem;
@@ -400,6 +387,9 @@ html {font-size: 106%;}
 .form-title {color: #e6edf3; font-size: 1.2rem; font-weight: 700; margin-bottom: 0.3rem;}
 .form-sub {color: #8b98a9; margin-bottom: 1.2rem; font-size: 0.9rem;}
 
+/* ============================================================
+   Search hero on home
+   ============================================================ */
 .search-hero {margin-bottom: 0.5rem;}
 .search-hero .stTextInput input {
     height: 3rem !important; font-size: 1rem !important;
@@ -429,6 +419,9 @@ html {font-size: 106%;}
     border: 1px solid #115e59 !important; box-shadow: none !important;
 }
 
+/* ============================================================
+   Inputs & buttons
+   ============================================================ */
 .stTextInput input, .stTextArea textarea {
     background-color: #12171f !important;
     border: 1px solid #232b38 !important;
@@ -464,10 +457,16 @@ html {font-size: 106%;}
     background: #115e59 !important; border-color: #0f766e !important; color: #ffffff !important;
 }
 
+/* ============================================================
+   Section titles
+   ============================================================ */
 .workspace-title {color: #e6edf3; font-size: 1.75rem; font-weight: 800; margin-bottom: 0.35rem; letter-spacing: -0.02em;}
 .workspace-sub {color: #8b98a9; line-height: 1.6; margin-bottom: 1.5rem; font-size: 0.96rem;}
 .user-pill {color: #8b98a9; font-size: 0.85rem; margin-bottom: 1rem;}
 
+/* ============================================================
+   Domain cards
+   ============================================================ */
 .domain-card {
     background: #12171f;
     border: 1px solid #232b38;
@@ -489,6 +488,9 @@ html {font-size: 106%;}
 .stApp [data-testid="stColumn"]:has(.domain-card) [data-testid="stElementContainer"]:has(.domain-card) {flex: 1; display: flex; flex-direction: column;}
 .stApp [data-testid="stColumn"]:has(.domain-card) .domain-card {flex: 1;}
 
+/* ============================================================
+   Badges
+   ============================================================ */
 .difficulty-badge {
     display: inline-block; padding: 0.16rem 0.55rem; border-radius: 5px;
     font-size: 0.72rem; font-weight: 600; margin-right: 0.35rem;
@@ -512,6 +514,9 @@ html {font-size: 106%;}
     border: 1px solid #232b38;
 }
 
+/* ============================================================
+   Info items, timeline, reminders
+   ============================================================ */
 .analysis-row {
     background: #12171f; border: 1px solid #232b38;
     border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 1rem;
@@ -581,7 +586,8 @@ hr {border: none; border-top: 1px solid #232b38; margin: 1.5rem 0;}
 </style>
 """, unsafe_allow_html=True)
 
-# Login page keyboard flow
+# Login page keyboard flow: Enter jumps Email -> Password, and Enter on the
+# last field clicks the primary button (Login / Send code / Verify).
 components.html(
     """
     <script>
@@ -649,6 +655,7 @@ def estimate_duration(difficulty):
     return "4 - 6 weeks"
 
 def extract_json(text):
+    """Best-effort JSON extraction from an LLM response (dict or list)."""
     if not text:
         return None
     text = re.sub(r"```(json)?", "", str(text)).strip()
@@ -701,6 +708,7 @@ def get_gemini_model():
     return None
 
 def ai_generate(prompt, max_tokens=500, model=None):
+    """Call Gemini and return text, or None when unavailable/failed."""
     if model is None:
         model = get_gemini_model()
     if model is None:
@@ -716,7 +724,7 @@ def ai_generate(prompt, max_tokens=500, model=None):
         return None
 
 # ======================================================
-# LOCAL STORE
+# LOCAL STORE (persistence fallback)
 # ======================================================
 def _safe_key(value):
     return str(value or "guest").replace("@", "_at_").replace(".", "_")
@@ -786,7 +794,7 @@ def merge_unique_by_id(primary, fallback):
     return merged
 
 # ======================================================
-# SUPABASE HELPERS
+# SUPABASE HELPERS (best-effort, local fallback)
 # ======================================================
 def db_insert(table, payload):
     if not supabase:
@@ -819,7 +827,7 @@ def db_update(table, row_id, payload):
         return None
 
 # ======================================================
-# AUTH
+# AUTH (Supabase first, local fallback)
 # ======================================================
 def _hash_password(password):
     return hashlib.sha256(str(password).encode("utf-8")).hexdigest()
@@ -829,7 +837,7 @@ def local_signup(full_name, email, password):
     auth = store.setdefault("_local_auth", {})
     key = _safe_key(email)
     if key in auth:
-        return "__ACCOUNT_EXISTS__"
+        return "An account with this email already exists locally."
     auth[key] = {"full_name": full_name, "password": _hash_password(password)}
     store["_local_auth"] = auth
     _write_store(store)
@@ -844,25 +852,22 @@ def local_login(email, password):
     return "Invalid email or password."
 
 def signup_user(full_name, email, password):
+    """Try Supabase first; fall back to local store if unavailable."""
     if supabase:
         try:
             supabase.auth.sign_up({
                 "email": email, "password": password,
                 "options": {"data": {"full_name": full_name}},
             })
-            return None, True
+            return None
         except Exception as e:
             err = str(e)
             if "already registered" in err.lower() or "already exists" in err.lower():
-                return "__ACCOUNT_EXISTS__", False
-    err = local_signup(full_name, email, password)
-    if err:
-        return err, False
-    if not supabase:
-        local_login(email, password)
-    return None, True
+                return err
+    return local_signup(full_name, email, password)
 
 def login_user(email, password):
+    """Try Supabase first; fall back to local auth if unavailable/failed."""
     if supabase:
         try:
             supabase.auth.sign_in_with_password({"email": email, "password": password})
@@ -871,79 +876,15 @@ def login_user(email, password):
             pass
     return local_login(email, password)
 
-def account_exists(email):
-    """True when an account for this email is registered in Supabase or locally."""
-    email = str(email or "").strip().lower()
-    if not email:
-        return False
-    if supabase:
-        try:
-            existing = supabase.table("profiles").select("id").eq("email", email).limit(1).execute()
-            if existing and existing.data:
-                return True
-        except Exception:
-            pass
-    return _safe_key(email) in _load_store().get("_local_auth", {})
-
 # ======================================================
-# EMAIL — Resend (HTTPS) primary, SMTP fallback
+# EMAIL NOTIFICATIONS
 # ======================================================
 def send_email_notification(to_email, subject, body):
-    """
-    Send email. Uses Resend HTTPS API (works on Render) if RESEND_API_KEY is set.
-    Otherwise falls back to SMTP (works locally, blocked on Render free tier).
-    """
-    print(
-        f"EMAIL DEBUG: to={to_email} resend={'yes' if RESEND_API_KEY else 'no'} "
-        f"smtp_enabled={EMAIL_ENABLED}",
-        flush=True,
-    )
-
-    if not to_email:
-        st.session_state["last_email_status"] = "No recipient email provided."
-        return False
-
-    # Preferred: Resend HTTPS API
-    if RESEND_API_KEY:
-        try:
-            resp = requests.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {RESEND_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": RESEND_FROM,
-                    "to": [to_email],
-                    "subject": subject,
-                    "text": body,
-                },
-                timeout=20,
-            )
-            if resp.status_code in (200, 201):
-                st.session_state["last_email_status"] = f"✅ Email sent to {to_email}"
-                print(f"EMAIL DEBUG: ✅ Resend success {resp.status_code}", flush=True)
-                return True
-            else:
-                err = f"Resend {resp.status_code}: {resp.text[:200]}"
-                st.session_state["last_email_status"] = f"❌ {err}"
-                print(f"EMAIL ERROR: {err}", flush=True)
-                return False
-        except Exception as e:
-            err = f"{type(e).__name__}: {e}"
-            st.session_state["last_email_status"] = f"❌ Resend failed: {err}"
-            print(f"EMAIL ERROR: {err}", flush=True)
-            return False
-
-    # Fallback: SMTP (local only)
-    if not EMAIL_ENABLED:
+    if not EMAIL_ENABLED or not to_email:
         st.session_state["last_email_status"] = (
-            "Email not configured: set RESEND_API_KEY (recommended for Render) "
-            "or the [email] SMTP settings in .streamlit/secrets.toml."
+            "Email not sent: SMTP is not configured in .streamlit/secrets.toml."
         )
-        print("EMAIL DEBUG: no RESEND_API_KEY and SMTP not configured", flush=True)
         return False
-
     try:
         msg = EmailMessage()
         msg["Subject"] = subject
@@ -951,22 +892,17 @@ def send_email_notification(to_email, subject, body):
         msg["To"] = to_email
         msg.set_content(body)
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-            server.ehlo()
-            server.starttls(context=ssl.create_default_context())
-            server.ehlo()
+            server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
-        st.session_state["last_email_status"] = f"✅ Email sent via SMTP to {to_email}"
-        print("EMAIL DEBUG: ✅ SMTP success", flush=True)
+        st.session_state["last_email_status"] = f"Email sent to {to_email}"
         return True
     except Exception as e:
-        err = f"{type(e).__name__}: {e}"
-        st.session_state["last_email_status"] = f"❌ SMTP failed: {err}"
-        print(f"EMAIL ERROR: {err}", flush=True)
+        st.session_state["last_email_status"] = f"Email failed: {e}"
         return False
 
 # ======================================================
-# REMINDERS
+# REMINDERS (in-app + best-effort email scheduling)
 # ======================================================
 def make_reminder(project_id, title, message, due_date=None, status="pending", kind="task"):
     if due_date is None:
@@ -1002,6 +938,7 @@ def format_due_date(date_value):
 def create_project_reminders(project_id, project, steps):
     start_date = datetime.utcnow().date()
     title = project.get("title", "your project")
+
     append_project_reminder(project_id, make_reminder(
         project_id,
         "Project started",
@@ -1009,6 +946,7 @@ def create_project_reminders(project_id, project, steps):
         start_date,
         "info",
     ))
+
     gap_days = 3 if normalize_difficulty(project.get("difficulty", "")) != "Advanced" else 5
     plan_lines = []
     plan_map = st.session_state.setdefault("local_reminder_plan", {}).setdefault(str(project_id), {})
@@ -1025,7 +963,7 @@ def create_project_reminders(project_id, project, steps):
         append_project_reminder(project_id, reminder)
         plan_lines.append(f"Step {step.get('step_no', idx)} — {step.get('title', '')}: target {format_due_date(due)}")
     save_local_state()
-    if plan_lines:
+    if EMAIL_ENABLED and plan_lines:
         send_email_notification(
             current_user_email(),
             f"Your project plan: {title}",
@@ -1035,7 +973,7 @@ def create_project_reminders(project_id, project, steps):
         )
 
 # ======================================================
-# LOCAL DATASET SEARCH
+# LOCAL DATASET SEARCH (optional curated source)
 # ======================================================
 @st.cache_data
 def load_dataset():
@@ -1069,6 +1007,7 @@ def load_dataset():
 
 @st.cache_resource
 def get_dataset_search_index():
+    """Build the TF-IDF index ONCE instead of refitting on every search (big speedup)."""
     df = load_dataset()
     if df.empty:
         return None, None, None
@@ -1113,7 +1052,7 @@ def search_local_dataset(query, limit=12):
         return []
 
 # ======================================================
-# AI PROJECT PACKAGE
+# AI PROJECT PACKAGE (idea/domain -> projects + research expansion)
 # ======================================================
 def fallback_project_package(query):
     pretty = query.strip().title() if query.strip() else "Selected Domain"
@@ -1156,6 +1095,7 @@ def fallback_project_package(query):
     return {"projects": projects, "research_directions": directions}
 
 def fetch_gemini_projects(query, model=None, limit=9, context=""):
+    """Gemini: doable projects (3 per difficulty) + research directions in ONE call."""
     if model is None:
         model = get_gemini_model()
     ai_projects, directions = [], []
@@ -1171,14 +1111,16 @@ Student input (domain, combination, or raw idea): "{query}"
 {context_block}
 Task:
 1. Generate 9 doable project ideas from this input: 3 Beginner, 3 Intermediate, 3 Advanced.
-2. Generate 5 research expansion directions.
+2. Generate 5 research expansion directions (how a student can extend this area toward research/publication-level work).
 
 Rules:
 - Ideas must be distinct, specific, and directly relevant to the input.
-- Each project needs: title, description (2-3 lines), domain, difficulty, skills, duration, why, research_expansion.
+- If the input combines domains (e.g., "ai + ml" or "cv + healthcare"), ideas should genuinely combine them.
+- Each project needs: title, description (2-3 lines), domain, difficulty (Beginner/Intermediate/Advanced),
+  skills, duration (e.g. "4 - 6 weeks"), why (why it is worth doing), research_expansion (how it can be extended further/research angle).
 - Each research direction needs: title, detail.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON in exactly this shape:
 {{
   "projects": [{{"title": "...", "description": "...", "domain": "...", "difficulty": "...", "skills": "...", "duration": "...", "why": "...", "research_expansion": "..."}}],
   "research_directions": [{{"title": "...", "detail": "..."}}]
@@ -1204,16 +1146,20 @@ Return ONLY valid JSON:
             for item in (data.get("research_directions") or [])[:8]:
                 if isinstance(item, dict) and item.get("title"):
                     directions.append({"title": str(item["title"]), "detail": str(item.get("detail", ""))})
+
     return ai_projects, directions
 
 def generate_project_package(query):
+    """Search all three sources; the slow ones (Gemini + arXiv) run in parallel."""
     package = {
         "db_projects": [],
         "ai_projects": [],
         "arxiv_projects": [],
         "research_directions": [],
     }
+
     package["db_projects"] = search_local_dataset(query, limit=12)
+
     model = get_gemini_model()
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         future_ai = pool.submit(fetch_gemini_projects, query, model)
@@ -1234,6 +1180,7 @@ def generate_project_package(query):
         ai_projects = fallback["projects"]
     if not directions:
         directions = fallback["research_directions"]
+
     package["ai_projects"] = ai_projects
     package["research_directions"] = directions
     return package
@@ -1246,6 +1193,7 @@ FRIENDLY_FALLBACK_TURNS = [
 ]
 
 def brainstorm_fallback_reply(messages):
+    """Friendly scripted mentor turn used when Gemini is unavailable."""
     user_turns = sum(1 for m in messages if m.get("role") == "user")
     idea = next((str(m.get("content", "")) for m in messages if m.get("role") == "user"), "")
     if 0 < user_turns <= len(FRIENDLY_FALLBACK_TURNS):
@@ -1258,6 +1206,8 @@ def brainstorm_fallback_reply(messages):
     }
 
 def brainstorm_mentor_reply(messages):
+    """One friendly mentor turn: react to the student, share possible ways/timelines/best
+    approach, then ask exactly ONE next question — like chatting with a friend."""
     model = get_gemini_model()
     if model is None:
         return brainstorm_fallback_reply(messages)
@@ -1267,17 +1217,23 @@ def brainstorm_mentor_reply(messages):
     )
     prompt = f"""
 You are a friendly senior mentor chatting with an engineering student about their project idea.
-Talk like a supportive friend: casual, warm, short sentences.
+Talk like a supportive friend: casual, warm, short sentences. Never lecture. Never open with
+praise filler like "great idea" or "awesome".
 
 CHAT SO FAR (oldest first):
 {transcript}
 
 YOUR JOB THIS TURN:
-1. React naturally to the student's latest message (1-2 lines).
-2. Share useful thoughts: possible ways to build, best approach, realistic time estimate, data tips.
-3. Ask exactly ONE next question.
-4. ready: true only if you know target user, data/input, output, and timeline.
-5. arxiv_query: 3-6 plain keywords.
+1. React naturally to the student's latest message (1-2 lines, like a friend would).
+2. Share useful thoughts based on the chat so far: possible ways this could be built, which
+   approach would work best and why, a realistic time estimate in weeks, anything about data
+   or difficulty. Keep it 2-4 short lines — this is a chat, not an essay.
+3. Ask exactly ONE next question — the most useful thing you still don't know
+   (target users, data availability, expected output, skills, timeline).
+4. ready: set true ONLY if you already know the target user, the data/input, the expected
+   output, and a rough timeline. Otherwise false.
+5. arxiv_query: 3-6 plain keywords (no quotes, no AND) capturing the refined idea, for finding
+   research papers later.
 
 Return ONLY valid JSON:
 {{"reply": "...", "ready": false, "arxiv_query": "..."}}
@@ -1294,6 +1250,7 @@ Return ONLY valid JSON:
     return brainstorm_fallback_reply(messages)
 
 def generate_idea_package(idea, context, arxiv_query):
+    """'Your Idea' final step: ONLY Gemini + arXiv (no database), run in parallel."""
     package = {"db_projects": [], "ai_projects": [], "arxiv_projects": [], "research_directions": []}
     model = get_gemini_model()
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -1307,12 +1264,14 @@ def generate_idea_package(idea, context, arxiv_query):
             package["arxiv_projects"] = future_arxiv.result() or []
         except Exception:
             package["arxiv_projects"] = []
+
     fallback = fallback_project_package(idea)
     package["ai_projects"] = ai_projects or fallback["projects"]
     package["research_directions"] = directions or fallback["research_directions"]
     return package
 
 def run_idea_search():
+    """Turn the whole brainstorming chat into results from Gemini and arXiv (no database)."""
     chat = st.session_state.get("idea_chat") or {}
     messages = [m for m in (chat.get("messages") or []) if m.get("content")]
     idea = next((str(m["content"]) for m in messages if m.get("role") == "user"), "") or "student idea"
@@ -1320,6 +1279,7 @@ def run_idea_search():
         f"{'Student' if m.get('role') == 'user' else 'Mentor'}: {str(m.get('content', ''))[:500]}"
         for m in messages[-16:]
     )
+
     st.session_state["last_search"] = idea
     st.session_state["searched"] = True
     st.session_state["search_mode"] = "idea"
@@ -1330,6 +1290,7 @@ def run_idea_search():
     st.session_state["db_page"] = 1
     st.session_state["ai_page"] = 1
     st.session_state["arxiv_page"] = 1
+
     with st.spinner("Turning our chat into doable projects..."):
         package = generate_idea_package(idea, context, str(st.session_state.get("idea_arxiv_query", "")).strip())
     st.session_state["results"] = package["ai_projects"]
@@ -1338,7 +1299,7 @@ def run_idea_search():
     st.rerun()
 
 # ======================================================
-# arXiv RESEARCH
+# arXiv RESEARCH (fresh research ideas column support)
 # ======================================================
 def fetch_arxiv_papers(query, limit=5):
     try:
@@ -1363,6 +1324,9 @@ def fetch_arxiv_papers(query, limit=5):
         return []
 
 def fetch_arxiv_research_ideas(query, limit=12):
+    """Latest arXiv papers turned into research-flavored project ideas (3rd results column).
+    Handles combos too: 'ai + ml' -> (all:"artificial intelligence") AND (all:"machine learning").
+    """
     try:
         q = clean_text(query)
         parts = [ALIASES.get(p, p) for p in re.split(r"\s*\+\s*|\s*,\s*|\s*/\s*|\s*&\s*|\s+and\s+", q) if p.strip()]
@@ -1413,6 +1377,7 @@ TEXT_EXTS = {".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".r
              ".txt", ".md", ".csv", ".json", ".html", ".css", ".ipynb", ".yaml", ".yml", ".xml", ".sql", ".r"}
 
 def parse_uploaded_file(uploaded_file):
+    """Return extracted text (truncated) plus a note for unsupported types."""
     name = uploaded_file.name
     suffix = Path(name).suffix.lower()
     max_chars = 8000
@@ -1446,6 +1411,7 @@ def parse_uploaded_file(uploaded_file):
         return "", f"Could not read {name}: {e}"
 
 def heuristic_upload_analysis(combined_text, file_names):
+    """Offline analysis used when Gemini is unavailable."""
     text = clean_text(combined_text)
     domain_hits = {
         "Machine Learning": ["model", "train", "accuracy", "sklearn", "classifier", "regression", "dataset"],
@@ -1457,6 +1423,7 @@ def heuristic_upload_analysis(combined_text, file_names):
         "IoT/Embedded": ["sensor", "arduino", "raspberry", "gpio", "serial"],
     }
     detected = [d for d, keys in domain_hits.items() if any(k in text for k in keys)][:4] or ["General Software"]
+
     appreciation = (
         f"👏 Nice work getting {len(file_names)} file(s) to this stage — you already have "
         f"{', '.join(detected[:2])} working together, and that's the hardest part of any project. "
@@ -1482,1784 +1449,3 @@ def heuristic_upload_analysis(combined_text, file_names):
     ]
     row3 = [
         {"title": f"Extend toward {detected[0]} + real-world data", "detail": "Test your existing work on a larger/new dataset and report how performance changes."},
-        {"title": "Research expansion", "detail": "Survey 5 recent papers in your area, identify one gap, and prototype the improvement."},
-        {"title": "Cross-domain pivot", "detail": "Apply the same pipeline to a different domain (education, healthcare, finance) for a new project."},
-        {"title": "Efficiency/optimization direction", "detail": "Optimize speed or memory usage and quantify the improvement."},
-    ]
-    base_domain = detected[0].title()
-    suggested = [
-        {"title": f"Simple web demo for {base_domain}", "description": "Wrap your existing work in a clean Streamlit page so anyone can try it without code.", "difficulty": "Beginner", "duration": "2 - 3 weeks"},
-        {"title": f"Sample data pack for {base_domain}", "description": "Collect and document a small clean dataset your project can run on end-to-end.", "difficulty": "Beginner", "duration": "2 - 3 weeks"},
-        {"title": f"Evaluation mini-report for {base_domain}", "description": "Add basic metrics and a one-page results write-up to make your work credible.", "difficulty": "Beginner", "duration": "3 - 4 weeks"},
-        {"title": f"Baseline comparison for {base_domain}", "description": "Compare your method against one simple baseline and report where it wins or loses.", "difficulty": "Intermediate", "duration": "4 - 6 weeks"},
-        {"title": f"End-to-end automation for {base_domain}", "description": "Chain input → processing → output into one automated pipeline with a single click.", "difficulty": "Intermediate", "duration": "4 - 6 weeks"},
-        {"title": f"Analytics dashboard for {base_domain}", "description": "Visualize your results with charts and filters so patterns are easy to see.", "difficulty": "Intermediate", "duration": "4 - 6 weeks"},
-        {"title": f"Research prototype in {base_domain}", "description": "Survey recent papers, reproduce one baseline, and propose a measurable improvement.", "difficulty": "Advanced", "duration": "8 - 12 weeks"},
-        {"title": f"Deployed API version of {base_domain}", "description": "Package the core logic as an API, deploy it, and measure real-world performance.", "difficulty": "Advanced", "duration": "8 - 12 weeks"},
-        {"title": f"Cross-domain pivot study for {base_domain}", "description": "Apply the same pipeline to education, healthcare, or finance and compare results.", "difficulty": "Advanced", "duration": "8 - 12 weeks"},
-    ]
-    return {
-        "appreciation": appreciation,
-        "summary": summary,
-        "row1_contents": row1,
-        "row2_additions": row2,
-        "row3_expansions": row3,
-        "detected_domains": detected,
-        "suggested_projects": suggested,
-    }
-
-def _gemini_upload_overview(combined, file_names, model):
-    prompt = f"""
-You are an academic AI project mentor. A student uploaded their previous/existing project files for review.
-File names: {', '.join(file_names)}
-File contents (may be truncated):
-\"\"\"
-{combined[:10000]}
-\"\"\"
-
-Read the content carefully — actual function/class names, section headings, dataset names, libraries,
-methods, results, topic. Everything you output MUST come from THIS text.
-
-STRICT RULES:
-- Reference CONCRETE things you found (real function names, libraries, methods, datasets, findings).
-- FORBIDDEN: generic statements that could be true for any project.
-- If the files are a research paper, use its actual title/topic, method, experiments, results.
-
-Return ONLY valid JSON:
-{{
-  "appreciation": "2-3 line warm, specific appreciation",
-  "summary": "2-3 line summary using the actual content",
-  "row1_contents": [{{"point": "...", "detail": "..."}}],
-  "detected_domains": ["..."]
-}}
-"""
-    return extract_json(ai_generate(prompt, max_tokens=2048, model=model))
-
-def _gemini_upload_suggestions(combined, file_names, model):
-    prompt = f"""
-You are an academic AI project mentor. A student uploaded their previous/existing project files.
-File names: {', '.join(file_names)}
-File contents:
-\"\"\"
-{combined[:10000]}
-\"\"\"
-
-Every suggestion MUST grow out of THIS specific work. Reference concrete things found.
-
-Return ONLY valid JSON:
-{{
-  "row2_additions": [{{"title": "...", "detail": "..."}}],
-  "row3_expansions": [{{"title": "...", "detail": "..."}}],
-  "suggested_projects": [{{"title": "...", "description": "...", "difficulty": "Beginner|Intermediate|Advanced", "duration": "..."}}]
-}}
-
-- row2_additions: 5-6 NEW features on top of THEIR existing modules.
-- row3_expansions: 4-5 bigger directions grounded in their topic.
-- suggested_projects: exactly 9 — 3 Beginner, 3 Intermediate, 3 Advanced.
-"""
-    return extract_json(ai_generate(prompt, max_tokens=3072, model=model))
-
-def analyze_uploads(parsed_texts, file_names):
-    combined = "\n\n".join(t for t, _ in parsed_texts if t)[:12000]
-    model = get_gemini_model()
-    if model is not None and combined.strip():
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            f_overview = pool.submit(_gemini_upload_overview, combined, file_names, model)
-            f_suggest = pool.submit(_gemini_upload_suggestions, combined, file_names, model)
-            try:
-                overview = f_overview.result() or {}
-            except Exception:
-                overview = {}
-            try:
-                suggestions = f_suggest.result() or {}
-            except Exception:
-                suggestions = {}
-        if isinstance(overview, dict) and (overview.get("row1_contents") or overview.get("summary")):
-            merged = {
-                "appreciation": overview.get("appreciation", ""),
-                "summary": overview.get("summary", ""),
-                "row1_contents": overview.get("row1_contents", []),
-                "detected_domains": overview.get("detected_domains", []),
-                "row2_additions": suggestions.get("row2_additions", []),
-                "row3_expansions": suggestions.get("row3_expansions", []),
-                "suggested_projects": suggestions.get("suggested_projects", []),
-            }
-            if not merged["row2_additions"] and not merged["row3_expansions"] and not merged["suggested_projects"]:
-                offline = heuristic_upload_analysis(combined, file_names)
-                merged["row2_additions"] = offline["row2_additions"]
-                merged["row3_expansions"] = offline["row3_expansions"]
-                merged["suggested_projects"] = offline["suggested_projects"]
-                merged["_offline_partial"] = True
-            return merged
-    result = heuristic_upload_analysis(combined, file_names)
-    result["_offline"] = True
-    return result
-
-# ======================================================
-# BOOKMARKS
-# ======================================================
-def save_bookmark(project):
-    payload = {
-        "id": f"bm_{abs(hash(project.get('title', '')))}",
-        "user_email": current_user_email(),
-        "title": project.get("title", ""),
-        "description": project.get("description", ""),
-        "domain": project.get("domain", ""),
-        "difficulty": project.get("difficulty", ""),
-        "skills": project.get("skills", ""),
-        "duration": project.get("duration") or project.get("time", ""),
-        "why": project.get("why", ""),
-        "research_expansion": project.get("research_expansion", ""),
-        "source": project.get("source", ""),
-        "link": project.get("link", ""),
-    }
-    existing = {str(b.get("title", "")).lower() for b in st.session_state.get("local_bookmarks", [])}
-    if str(payload["title"]).lower() not in existing:
-        st.session_state.setdefault("local_bookmarks", []).append(payload)
-        save_local_state()
-    db_insert("bookmarks", {k: payload.get(k, "") for k in
-                            ["user_email", "title", "description", "domain", "difficulty", "skills"]})
-
-def get_bookmarks():
-    rows = db_select("bookmarks", {"user_email": current_user_email()}, "created_at")
-    local = st.session_state.get("local_bookmarks", [])
-    return merge_unique_by_id(local, rows) if local else (rows or local)
-
-# ======================================================
-# ROADMAP
-# ======================================================
-def fallback_roadmap(project):
-    title = project.get("title", "Project")
-    return [
-        {"step_no": 1, "title": f"Define the {title} problem clearly",
-         "description": "Write exactly what the system takes as input, produces as output, and who will use it.",
-         "tasks": ["Write the problem statement", "List inputs and outputs", "Identify target users"]},
-        {"step_no": 2, "title": "Collect resources, papers, and sample data",
-         "description": "Gather datasets, sample inputs, and related references before coding.",
-         "tasks": ["Find 2 datasets or sample inputs", "Save 3 related papers/links", "Note data limitations"]},
-        {"step_no": 3, "title": "Design the method and architecture",
-         "description": "Plan the workflow: how data moves between modules and which algorithms/libraries you will use.",
-         "tasks": ["Draw the architecture diagram", "Choose libraries and algorithms", "Define evaluation strategy"]},
-        {"step_no": 4, "title": "Build the core working prototype",
-         "description": "Implement the main logic with a small working version before building the full app.",
-         "tasks": ["Create the project skeleton", "Implement core logic", "Verify output on 3 sample cases"]},
-        {"step_no": 5, "title": "Evaluate and improve the result",
-         "description": "Test correctness and quality with suitable metrics and improve weak areas.",
-         "tasks": ["Run tests on multiple inputs", "Record evaluation metrics", "Fix weak cases"]},
-        {"step_no": 6, "title": "Build a clean demo interface",
-         "description": "Create a simple interface where anyone can try the project without touching code.",
-         "tasks": ["Build Streamlit/UI input section", "Display results clearly", "Add sample demo data"]},
-        {"step_no": 7, "title": "Prepare report, PPT, and viva explanation",
-         "description": "Write the final academic material: report, slides, and viva answers.",
-         "tasks": ["Write report with screenshots", "Prepare PPT", "Prepare viva answers"]},
-    ]
-
-def generate_dynamic_roadmap(project):
-    model = get_gemini_model()
-    if model is not None:
-        prompt = f"""
-Create a project execution roadmap for this student project.
-Project: {json.dumps(project)}
-Return ONLY a valid JSON list with 7 steps.
-Each step must have: step_no, title, description, tasks (list of 3 short checklist items).
-"""
-        data = extract_json(ai_generate(prompt))
-        if isinstance(data, list) and data:
-            steps = []
-            for i, step in enumerate(data[:7], start=1):
-                if not isinstance(step, dict):
-                    continue
-                tasks = step.get("tasks", ["Understand", "Implement", "Verify"])
-                if isinstance(tasks, str):
-                    tasks = [tasks]
-                steps.append({
-                    "step_no": int(step.get("step_no", i)),
-                    "title": str(step.get("title", f"Step {i}")),
-                    "description": str(step.get("description", "Complete this phase.")),
-                    "tasks": [str(t) for t in tasks][:5],
-                })
-            if steps:
-                return steps
-    return fallback_roadmap(project)
-
-def get_project_steps(project_id):
-    pid = str(project_id)
-    local_steps = st.session_state.get("local_roadmaps", {}).get(pid, [])
-    if pid.startswith("local_"):
-        return local_steps
-    try:
-        if supabase:
-            rows = supabase.table("roadmap_steps").select("*").eq("project_id", pid).order("step_no").execute().data or []
-            if rows:
-                return merge_unique_by_id(rows, local_steps)
-    except Exception:
-        pass
-    return local_steps
-
-def add_idea_step_to_roadmap(project_id, idea):
-    steps = get_project_steps(project_id)
-    if not steps:
-        return None
-    max_no = max(int(s.get("step_no", 0)) for s in steps)
-    new_step_no = max_no + 1
-    last = steps[-1]
-    if any(w in str(last.get("title", "")).lower() for w in ["report", "ppt", "viva", "final", "presentation"]):
-        insert_index = len(steps) - 1
-        new_step_no = int(last.get("step_no", max_no))
-        for s in steps:
-            if int(s.get("step_no", 0)) >= new_step_no:
-                s["step_no"] = int(s["step_no"]) + 1
-    else:
-        insert_index = len(steps)
-    new_step = {
-        "step_no": new_step_no,
-        "title": f"💡 Student idea: {idea.get('step_title', 'New direction')}",
-        "description": idea.get("step_description", ""),
-        "tasks": idea.get("step_tasks", ["Explore the idea", "Add it to your work", "Document the result"]),
-        "status": "pending",
-        "origin": "chat_idea",
-        "verdict": idea.get("rating", ""),
-        "verdict_reason": idea.get("reason", ""),
-    }
-    steps.insert(insert_index, new_step)
-    st.session_state.setdefault("local_roadmaps", {})[str(project_id)] = steps
-    save_local_state()
-    append_project_reminder(project_id, make_reminder(
-        project_id,
-        "New idea added to roadmap",
-        f"You added: {idea.get('step_title', 'a new idea')}. AI verdict: {idea.get('rating', '')}. {idea.get('reason', '')}",
-        datetime.utcnow().date(),
-        "info",
-        "idea",
-    ))
-    project_title = st.session_state.get("active_project", {}).get("title", "your project") if steps else "your project"
-    send_email_notification(
-        current_user_email(),
-        "New idea added to your roadmap",
-        f"Project: {project_title}\n"
-        f"Idea: {idea.get('step_title', '')}\nAI verdict: {idea.get('rating', '')}\n\n{idea.get('reason', '')}\n\n— AI Project Mentor",
-    )
-    return new_step
-
-# ======================================================
-# CHAT
-# ======================================================
-def get_chat(project_id):
-    pid = str(project_id)
-    local_chat = st.session_state.get("local_chat", {}).get(pid, [])
-    if pid.startswith("local_"):
-        return local_chat
-    rows = db_select("project_chat_history", {"project_id": pid}, "created_at", desc=False)
-    return rows if rows else local_chat
-
-def save_chat(project_id, role, message, meta=None):
-    pid = str(project_id)
-    payload = {
-        "project_id": None if pid.startswith("local_") else pid,
-        "user_email": current_user_email(),
-        "role": role,
-        "message": message,
-        "meta": json.dumps(meta) if meta else "",
-        "created_at": datetime.utcnow().isoformat(),
-    }
-    st.session_state.setdefault("local_chat", {}).setdefault(pid, []).append(payload)
-    save_local_state()
-    if not pid.startswith("local_"):
-        db_insert("project_chat_history", payload)
-
-def mentor_reply(project, steps, user_message, chat_history=None):
-    current_step = next((s for s in steps if s.get("status") != "completed"), None)
-    if current_step:
-        step_title = current_step.get("title", "current step")
-        step_description = current_step.get("description", "")
-    else:
-        step_title = "Final preparation"
-        step_description = "Prepare final report, PPT, screenshots, and viva answers."
-    history_text = "\n".join(
-        f"{m.get('role', 'user')}: {str(m.get('message', ''))[:200]}"
-        for m in (chat_history or [])[-8:]
-    )
-    model = get_gemini_model()
-    if model is None:
-        return ("AI mentor is offline right now (Gemini API not connected). "
-                "Meanwhile: focus on the current roadmap step's checklist.")
-    prompt = f"""
-You are the AI Project Mentor for an engineering student.
-
-PROJECT: {project.get('title', 'this project')}
-Domain: {project.get('domain', 'General')} | Difficulty: {project.get('difficulty', 'Intermediate')}
-Current step: {step_title} - {step_description}
-
-Recent conversation:
-{history_text or '(first message)'}
-
-Student asked: "{user_message}"
-
-Answer rules:
-1. FIRST LINE = the actual answer. Never open with filler.
-2. Answer every part of the question.
-3. Maximum 170 words.
-4. Short bullets or short lines. No long code.
-5. Specific to this project. Friendly, direct tone.
-"""
-    reply = ai_generate(prompt)
-    return reply or "The AI mentor could not respond right now. Please try again in a moment."
-
-def evaluate_student_idea(project, steps, idea_text):
-    model = get_gemini_model()
-    if model is None:
-        return {
-            "rating": "Doable with changes",
-            "reason": "AI rating is offline; validate with your guide.",
-            "suggestion": "Discuss feasibility with your project guide before investing time.",
-            "step_title": idea_text[:70],
-            "step_description": f"Explore this student-proposed idea: {idea_text}",
-            "step_tasks": ["Define scope of the idea", "Prototype quickly", "Decide keep/drop based on results"],
-        }
-    roadmap_text = "\n".join(f"Step {s.get('step_no')}: {s.get('title')}" for s in steps[:12])
-    prompt = f"""
-You are an academic project mentor. A student pitches a NEW idea mid-project.
-Project: {json.dumps({k: project.get(k, "") for k in ["title", "domain", "difficulty", "description"]})}
-Current roadmap:
-{roadmap_text}
-
-STUDENT'S NEW IDEA:
-{idea_text}
-
-Evaluate honestly:
-- rating: "Good", "Bad", or "Doable with changes"
-- reason: 2-3 lines
-- suggestion: one concrete improvement or caution
-- If not "Bad", propose roadmap step: step_title, step_description, step_tasks (list of 3).
-
-Return ONLY valid JSON:
-{{"rating": "...", "reason": "...", "suggestion": "...",
-  "step_title": "...", "step_description": "...", "step_tasks": ["...", "...", "..."]}}
-"""
-    data = extract_json(ai_generate(prompt))
-    if isinstance(data, dict) and data.get("rating"):
-        tasks = data.get("step_tasks") or ["Explore the idea", "Prototype quickly", "Decide keep/drop"]
-        if isinstance(tasks, str):
-            tasks = [tasks]
-        data["step_tasks"] = [str(t) for t in tasks][:4]
-        return data
-    return {
-        "rating": "Doable with changes",
-        "reason": "The AI could not rate this right now.",
-        "suggestion": "Add concrete details: what input, what output, which technique.",
-        "step_title": idea_text[:70],
-        "step_description": f"Student idea: {idea_text}",
-        "step_tasks": ["Clarify scope", "Check feasibility with guide", "Prototype if approved"],
-    }
-
-# ======================================================
-# STEP COMPLETION
-# ======================================================
-def get_tasks_list(step):
-    tasks = step.get("tasks", [])
-    if isinstance(tasks, str):
-        try:
-            tasks = json.loads(tasks)
-        except Exception:
-            tasks = [tasks]
-    if not isinstance(tasks, list):
-        tasks = [str(tasks)]
-    return [str(t) for t in tasks if str(t).strip()]
-
-def get_step_check_key(project_id, step):
-    return f"{current_user_email()}::{project_id}::{step.get('step_no')}"
-
-def get_saved_step_checks(project_id, step):
-    key = get_step_check_key(project_id, step)
-    tasks = get_tasks_list(step)
-    saved = st.session_state.setdefault("local_step_checks", {}).get(key, [])
-    if not isinstance(saved, list):
-        saved = []
-    return (saved + [False] * len(tasks))[:len(tasks)]
-
-def save_step_checks(project_id, step, checks):
-    key = get_step_check_key(project_id, step)
-    st.session_state.setdefault("local_step_checks", {})[key] = checks
-    save_local_state()
-
-def first_pending_step(steps):
-    for step in steps:
-        if step.get("status", "pending") != "completed":
-            return step
-    return None
-
-def _proof_key(project_id, step_no):
-    return f"{project_id}_{step_no}"
-
-def complete_step(step, project_id, proof=None):
-    pid = str(project_id)
-    step_no = int(step.get("step_no", 0))
-    step_title = step.get("title", "Roadmap step")
-    if proof:
-        st.session_state.setdefault("local_step_proofs", {})[_proof_key(project_id, step_no)] = {
-            "kind": proof.get("kind", "screenshot"),
-            "name": proof.get("name", ""),
-            "submitted_at": datetime.utcnow().isoformat(),
-        }
-    for s in st.session_state.setdefault("local_roadmaps", {}).get(pid, []):
-        if int(s.get("step_no", 0)) == step_no:
-            s["status"] = "completed"
-            s["completed_at"] = datetime.utcnow().isoformat()
-    for r in st.session_state.setdefault("local_reminders", {}).get(pid, []):
-        if str(step_no) in str(r.get("title", "")) and r.get("status") == "pending":
-            r["status"] = "completed"
-            r["message"] = f"Completed: {step_title}"
-    steps_after = st.session_state["local_roadmaps"].get(pid, [])
-    pending_steps = [s for s in steps_after if s.get("status") != "completed"]
-    if pending_steps:
-        next_step = sorted(pending_steps, key=lambda x: int(x.get("step_no", 0)))[0]
-        st.session_state["roadmap_notice"] = (
-            f"Great work! You completed Step {step_no}: {step_title}. "
-            f"Next: Step {next_step.get('step_no')}: {next_step.get('title')}."
-        )
-    else:
-        st.session_state["roadmap_notice"] = (
-            "Congratulations! All roadmap stages are complete. Generate the Final Pack."
-        )
-    if not pid.startswith("local_") and step.get("id"):
-        db_update("roadmap_steps", step["id"], {"status": "completed", "completed_at": datetime.utcnow().isoformat()})
-    proof = st.session_state.get("local_step_proofs", {}).get(_proof_key(project_id, step_no))
-    proof_line = f"Proof attached: {proof.get('name', 'n/a')}" if proof else "No proof attached."
-    send_email_notification(
-        current_user_email(),
-        f"Stage completed: {step_title}",
-        f"You completed Step {step_no}: {step_title}.\n{proof_line}\n"
-        + (f"Next: {pending_steps[0].get('title')}" if pending_steps else "All stages complete!")
-        + "\n\n— AI Project Mentor",
-    )
-    save_local_state()
-    update_project_progress(project_id)
-    st.rerun()
-
-def update_project_progress(project_id):
-    steps = get_project_steps(project_id)
-    if not steps:
-        return
-    done = sum(1 for s in steps if s.get("status") == "completed")
-    progress = int((done / len(steps)) * 100)
-    for p in st.session_state.get("local_projects", []):
-        if str(p.get("id")) == str(project_id):
-            p["progress"] = progress
-    save_local_state()
-    if not str(project_id).startswith("local_"):
-        db_update("user_projects", project_id, {"progress": progress, "updated_at": datetime.utcnow().isoformat()})
-
-# ======================================================
-# START PROJECT
-# ======================================================
-def start_project(project):
-    payload = {
-        "user_email": current_user_email(),
-        "title": project.get("title", ""),
-        "description": project.get("description", ""),
-        "domain": project.get("domain", ""),
-        "difficulty": project.get("difficulty", ""),
-        "skills": project.get("skills", ""),
-        "estimated_time": project.get("duration") or project.get("time", ""),
-        "source": project.get("source", ""),
-        "status": "active",
-        "progress": 0,
-    }
-    project_id = f"local_{len(st.session_state.get('local_projects', [])) + 1}_{abs(hash(payload.get('title', 'project'))) % 10_000_000}"
-    project_row = {**payload, "id": project_id}
-    upsert_local_project(project_row)
-
-    inserted = db_insert("user_projects", payload)
-    if inserted:
-        try:
-            project_id = inserted[0]["id"]
-            project_row = {**payload, "id": project_id}
-            upsert_local_project(project_row)
-        except Exception:
-            pass
-
-    steps = generate_dynamic_roadmap(project)
-    local_steps = [{**s, "id": f"{project_id}_{s['step_no']}", "status": "pending"} for s in steps]
-    st.session_state.setdefault("local_roadmaps", {})[str(project_id)] = local_steps
-    save_local_state()
-
-    if inserted and not str(project_id).startswith("local_"):
-        try:
-            step_rows = [{
-                "project_id": project_id,
-                "user_email": current_user_email(),
-                "step_no": s["step_no"],
-                "title": s["title"],
-                "description": s["description"],
-                "tasks": s.get("tasks", []),
-                "status": "pending",
-            } for s in steps]
-            db_insert("roadmap_steps", step_rows)
-        except Exception:
-            pass
-
-    try:
-        create_project_reminders(project_id, project_row, local_steps)
-    except Exception:
-        pass
-
-    send_email_notification(
-        current_user_email(),
-        f"You started your project: {project_row.get('title', '')}",
-        f"You started: {project_row.get('title', '')}\n"
-        f"First stage: {local_steps[0].get('title') if local_steps else 'Understand the problem'}\n\n"
-        f"Open AI Project Mentor and work through the checklist.\n\n— AI Project Mentor",
-    )
-
-    st.session_state["active_project_id"] = project_id
-    st.session_state["active_project"] = project_row
-    st.session_state["page"] = "workspace"
-    st.rerun()
-
-def get_projects():
-    rows = db_select("user_projects", {"user_email": current_user_email()}, "created_at")
-    local = st.session_state.get("local_projects", [])
-    return merge_unique_by_id(local, rows) if local else (rows or [])
-
-# ======================================================
-# FINAL PACK
-# ======================================================
-def fallback_final_pack(project, steps):
-    title = project.get("title", "Selected Project")
-    domain = project.get("domain", "General")
-    modules = "\n".join(f"- {s.get('title', 'Roadmap step')}" for s in steps[:7])
-    viva = "\n".join(
-        f"{i}. {q}" for i, q in enumerate([
-            "What real-world problem does your project solve, and for whom?",
-            "Why did you choose this approach over alternative methods?",
-            "Explain your system architecture and data flow.",
-            "What dataset did you use, and how did you preprocess it?",
-            "Which evaluation metrics did you choose and why?",
-            "What were your results, and how did you validate them?",
-            "What are the main limitations of your system?",
-            "How would you scale this project for real users?",
-            "What did you learn technically and personally from this project?",
-            "If given one more month, what would you improve first?",
-        ], start=1)
-    )
-    return {
-        "report": f"""### 1. Problem Statement
-The project **{title}** addresses a real-world problem in **{domain}** by designing and implementing a working solution.
-
-### 2. Objectives
-- Understand the problem and target users
-- Build a functional prototype
-- Evaluate with measurable metrics
-- Prepare report, PPT, and demonstration
-
-### 3. Proposed Methodology
-Collect data/resources → preprocess → implement core algorithm → evaluate → build demo interface.
-
-### 4. Modules
-{modules}
-
-### 5. Expected Output
-A working prototype with clear input, processing flow, results screen, and evaluation summary.
-
-### 6. Evaluation Plan
-Test with multiple examples, compare expected vs actual output, note limitations, and suggest improvements.
-
-### 7. PPT Slide Outline
-Title → Abstract → Problem Statement → Existing System → Proposed System → Architecture → Modules → Implementation → Results → Conclusion → Future Scope""",
-        "viva": viva,
-        "github_lines": f"""# {title}
-{project.get('description', '')}
-
-## Features
-- End-to-end working pipeline for {domain}
-- Clean demo interface
-- Evaluation results included
-
-## Tech Stack
-{project.get('skills', 'Python')}
-
-## Setup
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```""",
-        "linkedin_lines": f"""🚀 Excited to share my latest project: "{title}"!
-
-As part of my academic journey, I built a {normalize_difficulty(project.get('difficulty', ''))} level project in {domain}.
-💡 What it does: {str(project.get('description', ''))[:180]}...
-
-🛠️ Skills used: {project.get('skills', 'Python')}
-
-This project taught me a lot about problem-solving, implementation, and evaluation. Feedback and suggestions are welcome!
-
-#ProjectShowcase #{domain.replace(' ', '')} #MachineLearning #Python #StudentProject""",
-        "devpost_lines": f"""## {title}
-**Tagline:** {str(project.get('description', ''))[:100]}...
-
-**What it does:** A {normalize_difficulty(project.get('difficulty', ''))} level {domain} project.
-
-**Built with:** {project.get('skills', 'Python')}
-
-**Challenges we ran into:** Data collection, model tuning, and clean evaluation.
-
-**Accomplishments:** A working end-to-end demo with measurable results.""",
-    }
-
-def generate_final_pack(project, steps):
-    model = get_gemini_model()
-    if model is not None:
-        prompt = f"""
-Create a final academic project support pack.
-Project: {json.dumps(project)}
-Roadmap: {json.dumps(steps)}
-
-Return ONLY valid JSON:
-{{
-  "report": "markdown with sections: Problem Statement, Objectives, Proposed Methodology, Modules, Expected Output, Evaluation Plan, PPT Slide Outline",
-  "viva": "10 numbered viva questions with 1-line answer hints, in markdown",
-  "github_lines": "ready-to-paste GitHub repository README in markdown",
-  "linkedin_lines": "ready-to-paste LinkedIn post",
-  "devpost_lines": "ready-to-paste Devpost description"
-}}
-"""
-        data = extract_json(ai_generate(prompt))
-        if isinstance(data, dict) and data.get("report"):
-            data.setdefault("viva", "")
-            data.setdefault("github_lines", "")
-            data.setdefault("linkedin_lines", "")
-            data.setdefault("devpost_lines", "")
-            return data
-    return fallback_final_pack(project, steps)
-
-# ======================================================
-# RENDERING
-# ======================================================
-def render_project_card(project, index, source_key, show_research=True):
-    unique_key = f"{source_key}_{index}_{abs(hash(project.get('title', 'x'))) % 100000}"
-    with st.container(border=True):
-        st.caption(f"Project idea · {project.get('source', 'AI Mentor')}")
-        st.markdown(f"#### {project.get('title', 'Project Idea')}")
-        badges = (
-            difficulty_badge_html(project.get("difficulty", "Intermediate"))
-            + f'<span class="time-badge">⏱ {project.get("duration") or project.get("time") or estimate_duration(project.get("difficulty", ""))}</span>'
-            + f'<span class="domain-badge">{project.get("domain", "General")}</span>'
-        )
-        st.markdown(badges, unsafe_allow_html=True)
-        st.write(str(project.get("description", ""))[:260])
-        with st.expander("View details"):
-            st.markdown(f"**Full description:** {project.get('description', '')}")
-            st.markdown(f"**Skills:** {project.get('skills', 'Python, Problem Solving')}")
-            st.markdown(f"**Why this fits:** {project.get('why', '')}")
-            if show_research and project.get("research_expansion"):
-                st.markdown(f"**🔬 Research expansion:** {project.get('research_expansion')}")
-            if project.get("link"):
-                st.markdown(f"[Open research paper]({project.get('link')})")
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("⭐ Bookmark", key=f"bm_{unique_key}", use_container_width=True):
-                save_bookmark(project)
-                st.success("Bookmarked!")
-        with c2:
-            if st.button("▶️ Start", key=f"start_{unique_key}", type="primary", use_container_width=True):
-                start_project(project)
-
-# ======================================================
-# LOGIN
-# ======================================================
-def _new_otp_code():
-    return str(secrets.randbelow(900000) + 100000)
-
-def _otp_email_body(name, code):
-    return (
-        f"Hi {name},\n\n"
-        f"Your AI Project Mentor verification code is:\n\n    {code}\n\n"
-        "It expires in 10 minutes. If you didn't request this, you can ignore this email.\n\n"
-        "— AI Project Mentor"
-    )
-
-def _render_signup_form():
-    with st.form("signup_form", clear_on_submit=False):
-        full_name = st.text_input("Full Name", placeholder="Enter your full name")
-        email = st.text_input("Email", placeholder="you@example.com")
-        password = st.text_input("Password", type="password", placeholder="Create password (min 6 chars)")
-        confirm = st.text_input("Confirm Password", type="password", placeholder="Re-enter password")
-        submit = st.form_submit_button("📧 Send Verification Code", type="primary", use_container_width=True)
-    if submit:
-        full_name = (full_name or "").strip()
-        email = (email or "").strip()
-        password = password or ""
-        confirm = confirm or ""
-        if not full_name or not email or not password or not confirm:
-            st.error("Please fill all fields.")
-            return
-        if "@" not in email or "." not in email.split("@")[-1]:
-            st.error("Enter a valid email address.")
-            return
-        if password != confirm:
-            st.error("Passwords do not match.")
-            return
-        if len(password) < 6:
-            st.error("Password must be at least 6 characters.")
-            return
-
-        email_norm = email.lower()
-        if account_exists(email_norm):
-            st.error("An account with this email already exists. Please log in instead.")
-            return
-
-        code = _new_otp_code()
-        st.session_state["signup_otp"] = {
-            "code": code,
-            "expires": datetime.now() + timedelta(minutes=10),
-            "name": full_name,
-            "email": email_norm,
-            "password": password,
-        }
-        sent = send_email_notification(
-            email,
-            "Your AI Project Mentor verification code",
-            _otp_email_body(full_name, code),
-        )
-        if sent:
-            st.session_state["otp_notice"] = f"Verification code sent to {email}. Check your inbox (and spam)."
-            st.rerun()
-        else:
-            status = st.session_state.get("last_email_status", "Unknown error")
-            st.session_state.pop("signup_otp", None)
-            st.error(f"Could not send verification email. {status}")
-
-def _verify_signup_otp(code):
-    data = st.session_state.get("signup_otp")
-    if not data:
-        return "No verification pending. Fill the signup form again."
-    if datetime.now() > data["expires"]:
-        st.session_state.pop("signup_otp", None)
-        return "That code expired. Send a new one."
-    if not code or str(code).strip() != data["code"]:
-        return "Incorrect code. Check your email and try again."
-    email = data["email"]
-    err, created = signup_user(data["name"], email, data["password"])
-    if err and err != "__ACCOUNT_EXISTS__":
-        return err
-    login_err = login_user(email, data["password"])
-    if login_err:
-        st.session_state["post_verify_email"] = email
-        st.session_state["signup_done"] = True
-    else:
-        st.session_state["user"] = email
-        load_local_state_for_user(email)
-        st.session_state["page"] = "home"
-        st.session_state["just_signed_up"] = True
-    if created:
-        send_email_notification(
-            email,
-            "Welcome to AI Project Mentor",
-            f"Hi {data['name']},\n\nYour email is verified and your account is ready.\n\n— AI Project Mentor",
-        )
-    st.session_state.pop("signup_otp", None)
-    st.session_state.pop("otp_notice", None)
-    return None
-
-def _render_otp_step():
-    otp = st.session_state["signup_otp"]
-    mins_left = max(1, int((otp["expires"] - datetime.now()).total_seconds() // 60) + 1)
-    if st.session_state.get("otp_notice"):
-        st.info(st.session_state["otp_notice"])
-    if st.session_state.get("last_email_status"):
-        st.caption(st.session_state["last_email_status"])
-    st.markdown("<div class='form-title'>Verify your email</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='form-sub'>We sent a 6-digit code to <b>{otp['email']}</b>. It expires in ~{mins_left} min.</div>",
-        unsafe_allow_html=True,
-    )
-    with st.form("otp_form", clear_on_submit=False):
-        code = st.text_input("Verification code", placeholder="Enter 6-digit code", max_chars=6)
-        col_v, col_r, col_b = st.columns([2, 1, 1])
-        with col_v:
-            verify = st.form_submit_button("Verify & Create Account", type="primary", use_container_width=True)
-        with col_r:
-            resend = st.form_submit_button("Resend", use_container_width=True)
-        with col_b:
-            back = st.form_submit_button("Back", use_container_width=True)
-    if verify:
-        err = _verify_signup_otp(code)
-        if err:
-            st.error(err)
-        else:
-            st.rerun()
-    elif resend:
-        otp["code"] = _new_otp_code()
-        otp["expires"] = datetime.now() + timedelta(minutes=10)
-        if send_email_notification(otp["email"], "Your AI Project Mentor verification code",
-                                   _otp_email_body(otp["name"], otp["code"])):
-            st.session_state["otp_notice"] = f"New code sent to {otp['email']}"
-            st.rerun()
-        else:
-            status = st.session_state.get("last_email_status", "Unknown error")
-            st.error(f"Could not resend the email. {status}")
-    elif back:
-        st.session_state.pop("signup_otp", None)
-        st.session_state.pop("otp_notice", None)
-        st.rerun()
-
-def show_login_page():
-    st.markdown("<div class='login-scope'></div>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.markdown("<div class='top-label'>AI Project Mentor</div>", unsafe_allow_html=True)
-        st.markdown("<div class='hero-title'>Your AI-powered project journey</div>", unsafe_allow_html=True)
-        st.markdown(
-            "<div class='hero-sub'>Discover domains, generate doable projects from your own ideas, analyze your "
-            "previous work, and get mentored step-by-step from start to finish.</div>",
-            unsafe_allow_html=True,
-        )
-        post_verify_email = st.session_state.pop("post_verify_email", None)
-        if post_verify_email:
-            st.session_state["auth_mode"] = "Login"
-            st.session_state["login_email"] = post_verify_email
-        if st.session_state.get("auth_mode") not in ("Login", "Signup"):
-            st.session_state["auth_mode"] = "Login"
-        mode = st.radio("Choose", ["Login", "Signup"], horizontal=True,
-                        label_visibility="collapsed", key="auth_mode")
-        if mode == "Login":
-            if st.session_state.pop("signup_done", None):
-                st.success("Account verified! Please log in to continue.")
-            with st.form("login_form", clear_on_submit=False):
-                email = st.text_input("Email", placeholder="you@example.com", key="login_email")
-                password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass")
-                login_submit = st.form_submit_button("Login", type="primary", use_container_width=True)
-            if login_submit:
-                if not email or not password:
-                    st.error("Enter email and password.")
-                else:
-                    err = login_user(email.strip(), password)
-                    if err:
-                        st.error(err)
-                    else:
-                        st.session_state["user"] = email.strip()
-                        load_local_state_for_user(email.strip())
-                        st.session_state["page"] = "home"
-                        st.rerun()
-        else:
-            otp_data = st.session_state.get("signup_otp")
-            if otp_data and datetime.now() <= otp_data["expires"]:
-                _render_otp_step()
-            else:
-                _render_signup_form()
-
-# ======================================================
-# HOME
-# ======================================================
-def _apply_logout():
-    save_local_state()
-    for key in ["user", "active_project_id", "active_project"]:
-        st.session_state[key] = None
-    st.session_state["page"] = "home"
-    st.session_state["home_panel"] = "domain"
-
-def _render_menu_items():
-    st.caption(f"Signed in as {current_user_email()}")
-    page = st.session_state.get("page", "home")
-    if st.button("⭐ Bookmarks", key="menu_bookmarks", use_container_width=True,
-                 type="primary" if page == "bookmarks" else "secondary"):
-        st.session_state["page"] = "bookmarks"
-        st.rerun()
-    if st.button("🗂 My Projects", key="menu_projects", use_container_width=True,
-                 type="primary" if page == "projects" else "secondary"):
-        st.session_state["page"] = "projects"
-        st.rerun()
-    st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
-    if st.button("👋 Logout", key="menu_logout", use_container_width=True):
-        _apply_logout()
-        st.rerun()
-
-if hasattr(st, "dialog"):
-    @st.dialog("Menu", width="small")
-    def open_menu_drawer():
-        _render_menu_items()
-else:
-    def open_menu_drawer():
-        with st.container(border=True):
-            st.markdown("##### Menu")
-            _render_menu_items()
-
-def render_top_bar():
-    brand, spacer, actions = st.columns([6, 4, 2], gap="small")
-    with brand:
-        st.markdown(
-            f"""
-            <div class='topbar-brand'>
-                <div class='topbar-logo'>AI</div>
-                <div>
-                    <div class='topbar-name'>Project Mentor</div>
-                    <div class='topbar-user'>{current_user_email()}</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with actions:
-        home_col, menu_col = st.columns(2, gap="small")
-        with home_col:
-            if st.button("🏠", key="nav_home", help="Home"):
-                st.session_state["page"] = "home"
-                st.rerun()
-        with menu_col:
-            if st.button("☰", key="nav_menu", help="Menu"):
-                open_menu_drawer()
-    st.markdown("<div class='topbar-divider'></div>", unsafe_allow_html=True)
-
-def render_quick_actions():
-    actions = [
-        ("idea", "💭", "Your Idea"),
-        ("upload", "📁", "Upload Project"),
-        ("explore", "🗂", "Explore"),
-    ]
-    st.markdown("<div class='quick-actions'>", unsafe_allow_html=True)
-    cols = st.columns(3, gap="small")
-    for col, (key, icon, title) in zip(cols, actions):
-        with col:
-            active = st.session_state["home_panel"] == key
-            if st.button(f"{icon} {title}", key=f"panel_{key}", use_container_width=True,
-                         type="primary" if active else "secondary"):
-                st.session_state["home_panel"] = key
-                st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-def render_search_hero():
-    st.markdown("<div class='search-hero'>", unsafe_allow_html=True)
-    st.markdown("<div class='hero-title'>What do you want to build?</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='hero-sub'>Type a domain, a combination, or a raw idea — e.g. <b>ai + ml</b>, "
-        "<b>cv + healthcare</b>, or <b>a plant disease detector for farmers</b>.</div>",
-        unsafe_allow_html=True,
-    )
-    bar, btn = st.columns([6, 1], gap="small")
-    with bar:
-        query = st.text_input(
-            "Search",
-            placeholder="Search domains, combos, or your own idea...",
-            label_visibility="collapsed",
-            key="domain_query",
-        )
-    with btn:
-        if st.button("Recommend", type="primary", use_container_width=True):
-            if query.strip():
-                run_search(query.strip())
-            else:
-                st.warning("Type a domain or idea first.")
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.caption("Tip: combine two areas with a + sign — the mentor generates ideas that genuinely mix them.")
-
-def panel_domain():
-    st.markdown("<div class='workspace-title'>Search by Domain or Category</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='workspace-sub'>Type above in the search bar and hit <b>Recommend</b>. "
-        "Popular starts: ai, ml, nlp, computer vision, iot, cybersecurity, data science.</div>",
-        unsafe_allow_html=True,
-    )
-
-def panel_idea():
-    st.markdown("<div class='workspace-title'>Brainstorm With Your Mentor</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='workspace-sub'>Got an idea in your head? Just say it — your mentor chats with you like a friend.</div>",
-        unsafe_allow_html=True,
-    )
-    if st.session_state.get("idea_chat") is None:
-        st.session_state["idea_chat"] = {"messages": [{
-            "role": "assistant",
-            "content": (
-                "Hey! 👋 What's the idea you've got in mind right now? "
-                "Don't worry about wording it perfectly."
-            ),
-        }]}
-    chat = st.session_state["idea_chat"]
-    messages = chat.get("messages", [])
-    user_turns = sum(1 for m in messages if m.get("role") == "user")
-    mentor_ready = (bool(chat.get("ready")) and user_turns >= 2) or user_turns >= 6
-    for msg in messages[-30:]:
-        with st.chat_message("user" if msg.get("role") == "user" else "assistant"):
-            st.write(msg["content"])
-    if mentor_ready:
-        st.success("🎉 Your mentor has doable projects for the idea you shared — ready when you are!")
-        b1, b2, _ = st.columns([1.6, 1, 2])
-        with b1:
-            if st.button("🎯 Show me the doable projects", type="primary", use_container_width=True):
-                run_idea_search()
-        with b2:
-            if st.button("🗑 Start over", use_container_width=True):
-                st.session_state["idea_chat"] = None
-                st.session_state["searched"] = False
-                st.session_state["search_mode"] = ""
-                st.rerun()
-    elif user_turns >= 1:
-        st.caption("💬 Keep chatting — the buttons will appear once your mentor knows enough about your idea.")
-    user_msg = st.chat_input("Reply to your mentor...")
-    if user_msg:
-        messages.append({"role": "user", "content": user_msg.strip()})
-        with st.spinner("Your mentor is thinking..."):
-            reply_pack = brainstorm_mentor_reply(messages)
-        messages.append({"role": "assistant", "content": reply_pack["reply"]})
-        st.session_state["idea_arxiv_query"] = reply_pack.get("arxiv_query", "")
-        chat["ready"] = bool(reply_pack.get("ready"))
-        st.rerun()
-
-def panel_upload():
-    st.markdown("<div class='workspace-title'>Upload Your Previous Project</div>", unsafe_allow_html=True)
-    st.markdown("<div class='workspace-sub'>Upload code files, PDFs, or Word documents. You'll get a 3-row analysis.</div>", unsafe_allow_html=True)
-    files = st.file_uploader(
-        "Upload files",
-        accept_multiple_files=True,
-        type=["py", "js", "ts", "java", "c", "cpp", "txt", "md", "csv", "json", "html", "ipynb", "pdf", "docx"],
-        key="upload_files",
-    )
-    if st.button("📊 Analyze My Files", type="primary", use_container_width=True):
-        if not files:
-            st.warning("Upload at least one file.")
-        else:
-            parsed = []
-            skipped = []
-            for f in files:
-                text, note = parse_uploaded_file(f)
-                if text:
-                    parsed.append((text, f.name))
-                if note:
-                    skipped.append(note)
-            if not parsed:
-                st.error("No files could be read. " + " ".join(skipped))
-            else:
-                with st.spinner("Reading your files and analyzing them with the AI mentor..."):
-                    st.session_state["upload_analysis"] = analyze_uploads(parsed, [f.name for f in files])
-                    st.session_state["upload_names"] = [f.name for f in files]
-                    st.session_state["upload_snippets"] = [
-                        {"name": name, "chars": len(text), "preview": text[:350]}
-                        for text, name in parsed
-                    ]
-                if skipped:
-                    st.caption("Skipped: " + " ".join(skipped))
-    if st.session_state.get("upload_analysis"):
-        render_upload_analysis(st.session_state["upload_analysis"])
-
-def panel_explore():
-    st.markdown("<div class='workspace-title'>Explore Domains</div>", unsafe_allow_html=True)
-    st.markdown("<div class='workspace-sub'>Understand what each domain means, where it is used, and what you can build in it.</div>", unsafe_allow_html=True)
-    items = list(DOMAINS.items())
-    for i in range(0, len(items), 3):
-        cols = st.columns(3, gap="medium")
-        for col, (domain_name, info) in zip(cols, items[i:i + 3]):
-            with col:
-                uses_html = "".join(f"<li>{u}</li>" for u in info["uses"])
-                examples_html = "".join(f"<span class='domain-tag'>{x}</span>" for x in info["examples"])
-                st.markdown(
-                    f"""
-                    <div class='domain-card'>
-                        <div class='domain-title'><span class='domain-emoji'>{info['emoji']}</span>{domain_name}</div>
-                        <div class='domain-section'><b>What it is:</b><br>{info['meaning']}</div>
-                        <div class='domain-section'><b>Used for:</b></div>
-                        <div class='domain-section' style='margin-top:-0.5rem;'>
-                            <ul style='margin-top:0.1rem; padding-left:1.1rem;'>{uses_html}</ul>
-                        </div>
-                        <div class='domain-section'><b>Best for:</b> {info['best_for']}</div>
-                        <div class='domain-section'><b>Example ideas:</b><br>{examples_html}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if st.button(f"See projects in {domain_name}", key=f"explore_{domain_name}", use_container_width=True):
-                    st.session_state["home_panel"] = "domain"
-                    run_search(domain_name)
-
-def show_home_page():
-    st.markdown("<div class='home-scope'></div>", unsafe_allow_html=True)
-    render_top_bar()
-    render_search_hero()
-    render_quick_actions()
-    panel = st.session_state["home_panel"]
-    if panel == "idea":
-        panel_idea()
-    elif panel == "upload":
-        panel_upload()
-    elif panel == "explore":
-        panel_explore()
-    if panel in ("domain", "idea") and st.session_state.get("searched") \
-            and st.session_state.get("search_mode") == panel:
-        render_search_results(include_db=(panel == "domain"))
-
-def run_search(query):
-    st.session_state["last_search"] = query
-    st.session_state["searched"] = True
-    st.session_state["search_mode"] = "domain"
-    st.session_state["results"] = []
-    st.session_state["db_results"] = []
-    st.session_state["arxiv_results"] = []
-    st.session_state["research_directions"] = []
-    st.session_state["db_page"] = 1
-    st.session_state["ai_page"] = 1
-    st.session_state["arxiv_page"] = 1
-    with st.spinner("Searching the database, AI mentor, and arXiv in parallel..."):
-        package = generate_project_package(query)
-        st.session_state["db_results"] = package["db_projects"]
-        st.session_state["results"] = package["ai_projects"]
-        st.session_state["arxiv_results"] = package["arxiv_projects"]
-        st.session_state["research_directions"] = package["research_directions"]
-    st.rerun()
-
-def render_expander_card(project, number, source_key, show_research=True):
-    unique_key = f"{source_key}_{number}_{abs(hash(project.get('title', 'x'))) % 100000}"
-    with st.expander(f"{number}. {project.get('title', 'Project Idea')}", expanded=False):
-        st.markdown(
-            f"""
-            <div style="margin-bottom:0.6rem;">
-                {difficulty_badge_html(project.get("difficulty", "Intermediate"))}
-                <span class="domain-badge">{project.get("domain", "General")}</span>
-                <span class="source-badge">{project.get("source", "AI Mentor")}</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        why = str(project.get("why", "")).strip()
-        if why:
-            st.caption(why)
-        st.write(str(project.get("description", "")))
-        st.markdown(f"**Skills:** {project.get('skills', 'Python, Problem Solving')}")
-        st.markdown(f"**Duration:** {project.get('duration') or project.get('time') or estimate_duration(project.get('difficulty', ''))}")
-        if show_research and project.get("research_expansion"):
-            st.markdown(f"**🔬 Research expansion:** {project.get('research_expansion')}")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if st.button("⭐ Bookmark", key=f"bm_{unique_key}", use_container_width=True):
-                save_bookmark(project)
-                st.success("Bookmarked!")
-        with c2:
-            if st.button("▶️ Start", key=f"start_{unique_key}", type="primary", use_container_width=True):
-                start_project(project)
-        with c3:
-            link = project.get("link") or project.get("url") or ""
-            if link:
-                st.markdown(f"[Open link]({link})")
-
-def render_project_stream(projects, source_key, page_key, show_research=True, empty_text="No results in this column yet."):
-    if not projects:
-        st.info(empty_text)
-        return
-    page = max(1, int(st.session_state.get(page_key, 1)))
-    start = (page - 1) * RESULTS_PER_PAGE
-    end = start + RESULTS_PER_PAGE
-    page_data = projects[start:end]
-    if not page_data:
-        st.session_state[page_key] = 1
-        st.rerun()
-    for i, project in enumerate(page_data, start=1):
-        render_expander_card(project, start + i, source_key, show_research=show_research)
-    st.caption(f"Showing {start + 1}–{min(end, len(projects))} of {len(projects)} results.")
-    p1, p2 = st.columns(2)
-    with p1:
-        if st.button("⬅ Previous", key=f"prev_{source_key}", use_container_width=True, disabled=page <= 1):
-            st.session_state[page_key] = page - 1
-            st.rerun()
-    with p2:
-        if st.button("Next ➡", key=f"next_{source_key}", use_container_width=True, disabled=end >= len(projects)):
-            st.session_state[page_key] = page + 1
-            st.rerun()
-    if end >= len(projects):
-        st.info("You have reached the end of the results for this search.")
-
-def render_search_results(include_db=True):
-    query = st.session_state.get("last_search", "")
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown(f'## 🎯 Results for "{query}"')
-    if include_db:
-        st.caption("Three sources searched in parallel — pick by difficulty and duration, then press Start.")
-    else:
-        st.caption("Tailored to your brainstorming answers — AI mentor + live arXiv research (no dataset used).")
-    db_results = st.session_state.get("db_results", [])
-    ai_results = st.session_state.get("results", [])
-    arxiv_results = st.session_state.get("arxiv_results", [])
-    directions = st.session_state.get("research_directions", [])
-    if include_db:
-        col_db, col_ai, col_research = st.columns(3, gap="medium")
-    else:
-        col_ai, col_research = st.columns(2, gap="medium")
-    if include_db:
-        with col_db:
-            st.markdown("### 🗄 Database Results")
-            st.caption(f"{len(db_results)} curated ideas matched from the project dataset.")
-            render_project_stream(
-                db_results, "db_result", "db_page", show_research=False,
-                empty_text="No database matches for this query. Try a broader domain word.",
-            )
-    with col_ai:
-        st.markdown("### 🧠 AI Mentor Ideas")
-        st.caption(f"{len(ai_results)} doable ideas generated for you — spread across all difficulties.")
-        render_project_stream(
-            ai_results, "ai_result", "ai_page", show_research=True,
-            empty_text="AI mentor is offline or busy — check the Gemini API key and search again.",
-        )
-        if directions:
-            with st.expander(f"🔬 Research expansion directions ({len(directions)})"):
-                for direction in directions:
-                    st.markdown(f"- **{direction.get('title', '')}** — {direction.get('detail', '')}")
-    with col_research:
-        st.markdown("### 📚 arXiv Research Ideas")
-        st.caption(f"{len(arxiv_results)} fresh research directions pulled live from arXiv.")
-        render_project_stream(
-            arxiv_results, "arxiv_result", "arxiv_page", show_research=True,
-            empty_text="Live research ideas are temporarily unavailable.",
-        )
-
-def render_upload_analysis(analysis):
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown(f"## 📊 Analysis of: {', '.join(st.session_state.get('upload_names', [])[:4])}")
-    if analysis.get("appreciation"):
-        st.success(f"🌟 {analysis['appreciation']}")
-    if analysis.get("summary"):
-        st.info(analysis["summary"])
-    if analysis.get("detected_domains"):
-        st.markdown(
-            "".join(f'<span class="domain-badge">{d}</span>' for d in analysis["detected_domains"]),
-            unsafe_allow_html=True,
-        )
-    snippets = st.session_state.get("upload_snippets") or []
-    if snippets:
-        with st.expander("📄 What the mentor actually read from your files"):
-            for snip in snippets:
-                st.caption(f"**{snip['name']}** — {snip['chars']:,} characters extracted")
-                st.text(snip["preview"].replace("\n", " ")[:350] + "...")
-    if analysis.get("_offline") or analysis.get("_offline_partial"):
-        st.warning(
-            "⚡ Gemini couldn't complete the full AI analysis for this upload. Wait a minute and try again."
-        )
-    col_inside, col_add, col_dirs = st.columns(3, gap="medium")
-
-    def _fill_section_box(container, header_html, items, empty_text, accent=""):
-        with container:
-            with st.container(border=True):
-                st.markdown(header_html, unsafe_allow_html=True)
-                rendered = 0
-                for item in (items or [])[:8]:
-                    point = item.get("point", item.get("title", ""))
-                    detail = item.get("detail", item.get("description", ""))
-                    if not str(point).strip() and not str(detail).strip():
-                        continue
-                    accent_cls = f" {accent}" if accent else ""
-                    st.markdown(
-                        f"""
-                        <div class='info-item{accent_cls}'>
-                            <div class='info-item-title'>{point}</div>
-                            <div class='info-item-detail'>{detail}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                    rendered += 1
-                if not rendered:
-                    st.caption(empty_text)
-
-    _fill_section_box(col_inside, "<div class='analysis-row' style='margin-bottom:0.6rem;'><div class='analysis-row-title'>📄 What your files contain</div></div>",
-                      analysis.get("row1_contents"), "Nothing detected inside the files yet.")
-    _fill_section_box(col_add, "<div class='analysis-row' style='margin-bottom:0.6rem;'><div class='analysis-row-title'>➕ What new you can add</div></div>",
-                      analysis.get("row2_additions"), "No additions suggested yet.", "green")
-    _fill_section_box(col_dirs, "<div class='analysis-row' style='margin-bottom:0.6rem;'><div class='analysis-row-title'>🧭 New directions & expansions</div></div>",
-                      analysis.get("row3_expansions"), "No expansion directions yet.", "purple")
-
-    suggested = analysis.get("suggested_projects") or []
-    if suggested:
-        st.markdown("### 🚀 Next projects building on this work")
-        cols = st.columns(3, gap="medium")
-        for i, project in enumerate(suggested[:9]):
-            if not isinstance(project, dict) or not project.get("title"):
-                continue
-            normalized = {
-                "title": project.get("title", "Next Project"),
-                "description": project.get("description", ""),
-                "domain": ", ".join(analysis.get("detected_domains", [])[:2]) or "Your Previous Work",
-                "difficulty": normalize_difficulty(project.get("difficulty", "Intermediate")),
-                "skills": project.get("skills", "Python, Problem Solving"),
-                "duration": project.get("duration") or estimate_duration(project.get("difficulty", "")),
-                "why": "Builds directly on your uploaded work.",
-                "source": "AI Mentor",
-            }
-            with cols[i % 3]:
-                render_expander_card(normalized, i + 1, "upload_suggested", show_research=False)
-
-# ======================================================
-# MY PROJECTS PAGE
-# ======================================================
-def show_projects_page():
-    render_top_bar()
-    st.markdown("## 🗂 My Projects")
-    projects = get_projects()
-    if not projects:
-        st.info("No active projects yet. Start one from the Home panel.")
-        return
-    cols = st.columns(3)
-    for i, p in enumerate(projects):
-        with cols[i % 3]:
-            with st.container(border=True):
-                st.markdown(f"### {p.get('title')}")
-                desc = str(p.get("description", ""))
-                st.write(desc[:130] + "..." if len(desc) > 130 else desc)
-                progress = int(p.get("progress", 0))
-                st.progress(progress)
-                st.caption(f"Progress: {progress}% | {p.get('difficulty', 'Intermediate')} | "
-                           f"{p.get('estimated_time') or p.get('duration') or ''}")
-                reminders = st.session_state.get("local_reminders", {}).get(str(p.get("id")), [])
-                pending_count = sum(1 for r in reminders if r.get("status") == "pending")
-                if pending_count:
-                    st.caption(f"🔔 {pending_count} pending reminder(s)")
-                if st.button("Open Workspace", key=f"open_project_{p.get('id')}", use_container_width=True):
-                    st.session_state["active_project_id"] = p.get("id")
-                    st.session_state["active_project"] = p
-                    st.session_state["page"] = "workspace"
-                    st.rerun()
-
-# ======================================================
-# BOOKMARKS PAGE
-# ======================================================
-def build_bookmarks_export(bookmarks):
-    rows = []
-    for bm in bookmarks:
-        rows.append({
-            "Title": str(bm.get("title", "")),
-            "Description": str(bm.get("description", "")),
-            "Domain": str(bm.get("domain", "")),
-            "Difficulty": str(bm.get("difficulty", "")),
-            "Skills": str(bm.get("skills", "")),
-            "Duration": str(bm.get("duration") or bm.get("estimated_time") or ""),
-            "Why": str(bm.get("why", "")),
-            "Research Expansion": str(bm.get("research_expansion", "")),
-            "Source": str(bm.get("source", "")),
-        })
-    txt_lines = []
-    for i, r in enumerate(rows, start=1):
-        txt_lines.append(f"{i}. {r['Title']}")
-        meta = " | ".join(x for x in [r["Domain"], r["Difficulty"], r["Duration"], r["Source"]] if x)
-        if meta:
-            txt_lines.append(f"   {meta}")
-        if r["Description"]:
-            txt_lines.append(f"   Description: {r['Description']}")
-        if r["Skills"]:
-            txt_lines.append(f"   Skills: {r['Skills']}")
-        if r["Why"]:
-            txt_lines.append(f"   Why: {r['Why']}")
-        if r["Research Expansion"]:
-            txt_lines.append(f"   Research expansion: {r['Research Expansion']}")
-        txt_lines.append("")
-    txt_body = "\n".join(txt_lines).strip() + "\n"
-    return rows, txt_body
-
-def show_bookmarks_page():
-    render_top_bar()
-    st.markdown("## ⭐ Bookmarked Ideas")
-    bookmarks = get_bookmarks()
-    if not bookmarks:
-        st.info("No bookmarks yet. Bookmark ideas from the Home panel.")
-        return
-    rows, txt_body = build_bookmarks_export(bookmarks)
-    csv_data = pd.DataFrame(rows).to_csv(index=False).encode("utf-8")
-    st.markdown("### ⬇ Download your bookmarks")
-    d_txt, d_csv = st.columns(2)
-    with d_txt:
-        st.download_button(
-            "📄 Download as Text (TXT)",
-            data=txt_body,
-            file_name="bookmarked_projects.txt",
-            mime="text/plain",
-            use_container_width=True,
-        )
-    with d_csv:
-        st.download_button(
-            "📊 Download as CSV",
-            data=csv_data,
-            file_name="bookmarked_projects.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    st.markdown("<hr>", unsafe_allow_html=True)
-    cols = st.columns(3)
-    for i, bm in enumerate(bookmarks):
-        project = dict(bm)
-        if not project.get("duration") and bm.get("estimated_time"):
-            project["duration"] = bm.get("estimated_time")
-        with cols[i % 3]:
-            render_project_card(project, i, "bookmark", show_research=False)
-            if st.button("🗑 Remove", key=f"rm_bm_{bm.get('id', i)}", use_container_width=True):
-                st.session_state["local_bookmarks"] = [
-                    b for b in st.session_state.get("local_bookmarks", [])
-                    if str(b.get("id")) != str(bm.get("id"))
-                ]
-                save_local_state()
-                st.rerun()
-
-# ======================================================
-# WORKSPACE
-# ======================================================
-def _proof_line(project_id, step_no):
-    proof = st.session_state.get("local_step_proofs", {}).get(_proof_key(project_id, step_no))
-    if not proof:
-        return ""
-    name = str(proof.get("name", "")).strip()
-    detail = f" — 📎 {name}" if name else " — 📎 proof submitted"
-    return f"<small style='color:#34d399;'>Proof verified{detail}</small>"
-
-def render_timeline(steps, project_id=None):
-    st.markdown("### 📍 Project Timeline")
-    if not steps:
-        st.info("Timeline will appear once the project roadmap is generated.")
-        return
-    current = first_pending_step(steps)
-    current_no = int(current.get("step_no", 0)) if current else None
-    for step in sorted(steps, key=lambda s: int(s.get("step_no", 0))):
-        no = int(step.get("step_no", 0))
-        status = step.get("status", "pending")
-        origin = step.get("origin", "")
-        if status == "completed":
-            dot_cls, dot_txt = "dot-done", "✓"
-        elif origin == "chat_idea":
-            dot_cls, dot_txt = "dot-idea", "💡"
-        elif current_no is not None and no == current_no:
-            dot_cls, dot_txt = "dot-current", str(no)
-        else:
-            dot_cls, dot_txt = "dot-locked", str(no)
-        label = step.get("title", "")
-        sub = step.get("verdict", "")
-        sub_html = f"<br><small style='color:#a4b0be;'>AI verdict: {sub}</small>" if sub else ""
-        proof_html = _proof_line(project_id, no) if (project_id and status == "completed") else ""
-        st.markdown(
-            f"""
-            <div class='timeline-item'>
-                <div class='timeline-dot {dot_cls}'>{dot_txt}</div>
-                <div style='color:#d3dae3; font-size:0.92rem;'>
-                    <b>Step {no}:</b> {label}{sub_html}{proof_html}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-def render_gated_roadmap(steps, project_id):
-    if st.session_state.get("roadmap_notice"):
-        st.success(st.session_state.pop("roadmap_notice"))
-    if not steps:
-        st.warning("No roadmap found. Start this project again.")
-        return
-    completed = [s for s in steps if s.get("status") == "completed"]
-    current = first_pending_step(steps)
-    future = []
-    if current:
-        current_no = int(current.get("step_no", 0))
-        future = [s for s in steps if s.get("status") != "completed" and int(s.get("step_no", 0)) > current_no]
-    if completed:
-        with st.expander(f"✅ Completed steps ({len(completed)})", expanded=False):
-            for step in completed:
-                st.success(f"Step {step.get('step_no')}: {step.get('title')}")
-    if current:
-        with st.container(border=True):
-            st.markdown(f"### 🔵 Current Step {current.get('step_no')}: {current.get('title')}")
-            st.write(current.get("description", ""))
-            tasks = get_tasks_list(current)
-            saved_checks = get_saved_step_checks(project_id, current)
-            st.markdown("**Complete this checklist to unlock the next step:**")
-            new_checks = []
-            for idx, task in enumerate(tasks):
-                cb_key = f"taskcheck_{project_id}_{current.get('step_no')}_{idx}"
-                new_checks.append(st.checkbox(task, value=bool(saved_checks[idx]), key=cb_key))
-            save_step_checks(project_id, current, new_checks)
-            all_done = bool(tasks) and all(new_checks)
-            if not all_done:
-                st.info("Tick every checklist item to enable step completion.")
-            proof_rec = st.session_state.get("local_step_proofs", {}).get(_proof_key(project_id, current.get("step_no")))
-            st.markdown("**📎 Submit proof of work (required):**")
-            st.caption("Upload a screenshot or short file showing this step is done — it unlocks the next step.")
-            uploaded_proof = st.file_uploader(
-                "Proof",
-                type=["png", "jpg", "jpeg", "webp", "pdf", "txt", "md", "csv", "ipynb", "zip"],
-                key=f"proof_upload_{project_id}_{current.get('step_no')}",
-                label_visibility="collapsed",
-            )
-            proof_ready = uploaded_proof is not None
-            if uploaded_proof:
-                st.success(f"✅ Proof ready: {uploaded_proof.name} ({uploaded_proof.size // 1024} KB)")
-            elif proof_rec:
-                st.caption(f"Previously submitted: {proof_rec.get('name', 'proof')}")
-            if not proof_ready:
-                st.warning("Attach a proof file to enable step completion.")
-            if st.button("✅ Submit proof & complete step", key=f"complete_{project_id}_{current.get('step_no')}",
-                         use_container_width=True, disabled=not (all_done and proof_ready)):
-                complete_step(current, project_id, proof={
-                    "kind": (uploaded_proof.type if uploaded_proof else "screenshot"),
-                    "name": uploaded_proof.name if uploaded_proof else "",
-                    "size": uploaded_proof.size if uploaded_proof else 0,
-                })
-    else:
-        st.success("All roadmap steps are completed. Generate the Final Pack now! 🎉")
-    if future:
-        st.markdown("### 🔒 Locked upcoming steps")
-        for step in future[:3]:
-            st.markdown(
-                f"<div class='locked-step'>Step {step.get('step_no')}: {step.get('title')}<br>"
-                f"<small>Complete the current step's checklist to unlock this.</small></div>",
-                unsafe_allow_html=True,
-            )
-        if len(future) > 3:
-            st.caption(f"+ {len(future) - 3} more steps locked")
-
-def render_mentor_chat(project, steps, project_id):
-    st.markdown("## 💬 Mentor Chat")
-    st.caption("Ask doubts anytime. Have a new idea mid-project? Tick 'Rate as new idea'.")
-    idea_mode = st.checkbox("💡 Rate as new idea (instead of asking a question)", key="idea_mode_cb")
-    chat_rows = get_chat(project_id)
-    if not chat_rows:
-        st.info("No chat yet. Ask your first question below.")
-    for msg in chat_rows[-20:]:
-        with st.chat_message("user" if msg.get("role") == "user" else "assistant"):
-            st.write(msg.get("message"))
-            meta_raw = msg.get("meta") or ""
-            if meta_raw:
-                try:
-                    meta = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
-                except Exception:
-                    meta = None
-                if isinstance(meta, dict) and meta.get("type") == "idea_rating":
-                    verdict = meta.get("rating", "")
-                    color = {"Good": "🟢", "Bad": "🔴"}.get(verdict, "🟡")
-                    st.markdown(f"{color} **Verdict: {verdict}**")
-                    if meta.get("reason"):
-                        st.caption(meta["reason"])
-                    if meta.get("suggestion"):
-                        st.caption(f"💡 {meta['suggestion']}")
-                    if verdict != "Bad" and not meta.get("added"):
-                        if st.button("➕ Add this idea to my roadmap & timeline",
-                                     key=f"add_idea_{abs(hash(str(meta))) % 1000000}"):
-                            new_step = add_idea_step_to_roadmap(project_id, meta)
-                            if new_step:
-                                for r in chat_rows:
-                                    try:
-                                        m = json.loads(r.get("meta") or "{}") if isinstance(r.get("meta"), str) else (r.get("meta") or {})
-                                    except Exception:
-                                        m = {}
-                                    if isinstance(m, dict) and m.get("type") == "idea_rating":
-                                        m["added"] = True
-                                        r["meta"] = json.dumps(m)
-                                save_local_state()
-                                st.success(f"Added to roadmap as Step {new_step.get('step_no')}!")
-                                st.rerun()
-    user_msg = st.chat_input("Ask about your project, or pitch a new idea...")
-    if user_msg:
-        if idea_mode:
-            save_chat(project_id, "user", f"💡 IDEA: {user_msg}")
-            with st.spinner("The mentor is evaluating your idea..."):
-                verdict_data = evaluate_student_idea(project, steps, user_msg)
-            rating = verdict_data.get("rating", "Doable with changes")
-            reply_text = (
-                f"**Idea verdict: {rating}**\n\n{verdict_data.get('reason', '')}\n\n"
-                f"💡 {verdict_data.get('suggestion', '')}"
-                + ("" if rating == "Bad" else "\n\n*If you're happy with this, click the button above to add it to your roadmap & timeline.*")
-            )
-            save_chat(project_id, "assistant", reply_text, meta={
-                "type": "idea_rating",
-                "rating": rating,
-                "reason": verdict_data.get("reason", ""),
-                "suggestion": verdict_data.get("suggestion", ""),
-                "step_title": verdict_data.get("step_title", ""),
-                "step_description": verdict_data.get("step_description", ""),
-                "step_tasks": verdict_data.get("step_tasks", []),
-                "added": False,
-            })
-        else:
-            save_chat(project_id, "user", user_msg)
-            with st.spinner("The mentor is thinking..."):
-                reply = mentor_reply(project, steps, user_msg, chat_rows)
-            save_chat(project_id, "assistant", reply)
-        st.rerun()
-
-def sync_reminders_with_steps(project_id, steps):
-    pid = str(project_id)
-    reminders = st.session_state.get("local_reminders", {}).get(pid, [])
-    if not reminders or not steps:
-        return
-    plan_map = st.session_state.get("local_reminder_plan", {}).get(pid, {})
-    step_nos = {str(int(s.get("step_no", 0))) for s in steps}
-    completed_nos = {str(int(s.get("step_no", 0))) for s in steps if s.get("status") == "completed"}
-    changed = False
-    for r in reminders:
-        if r.get("kind") == "idea" or r.get("status") == "info":
-            continue
-        m = re.match(r"Step (\d+)", str(r.get("title", "")))
-        if not m:
-            continue
-        no = int(m.group(1))
-        if str(no) not in step_nos:
-            later = sorted(int(s.get("step_no", 0)) for s in steps if int(s.get("step_no", 0)) >= no)
-            if not later:
-                continue
-            no = later[0]
-        step = next(s for s in steps if int(s.get("step_no", 0)) == no)
-        new_title = f"Step {no} target: {step.get('title', 'Project task')}"
-        if str(r.get("title", "")) != new_title:
-            r["title"] = new_title
-            changed = True
-        due = plan_map.get(str(no))
-        if due and str(r.get("due_date", ""))[:10] != str(due)[:10]:
-            r["due_date"] = due
-            changed = True
-        if str(no) in completed_nos and r.get("status") == "pending":
-            r["status"] = "completed"
-            r["message"] = f"Completed: {step.get('title', '')}"
-            changed = True
-    if changed:
-        save_local_state()
-
-def render_reminders_tab(project_id):
-    st.markdown("## 🔔 Reminders")
-    reminders = st.session_state.get("local_reminders", {}).get(str(project_id), [])
-    pending = [r for r in reminders if r.get("status") == "pending"]
-    completed = [r for r in reminders if r.get("status") == "completed"]
-    updates = [r for r in reminders if r.get("status") == "info"]
-    if st.session_state.get("last_email_status"):
-        st.caption(st.session_state["last_email_status"])
-    if not reminders:
-        st.info("No reminders yet.")
-        return
-    m1, m2 = st.columns(2)
-    m1.metric("Pending", len(pending))
-    m2.metric("Completed", len(completed))
-    if updates:
-        st.markdown("#### 📌 Recent updates")
-        for r in list(reversed(updates))[:3]:
-            cls = "reminder-box info" if r.get("kind") != "idea" else "reminder-box idea"
-            st.markdown(
-                f"<div class='{cls}'><div class='reminder-title'>{r.get('title')}</div>"
-                f"<div class='reminder-meta'>{r.get('message', '')}<br>Logged: {format_due_date(r.get('due_date'))}</div></div>",
-                unsafe_allow_html=True,
-            )
-    if pending:
-        st.markdown("#### ⏳ Step reminders (aligned with the 📍 Timeline)")
-        for r in sorted(pending, key=lambda x: str(x.get("due_date", "")))[:6]:
-            m = re.match(r"Step (\d+)", str(r.get("title", "")))
-            no = int(m.group(1)) if m else None
-            dot = f"<div class='timeline-dot dot-current'>{no}</div>" if no else "<div class='timeline-dot dot-locked'>⏰</div>"
-            st.markdown(
-                f"""
-                <div class='timeline-item'>
-                    {dot}
-                    <div style='flex:1;'>
-                        <div class='reminder-box' style='margin-bottom:0;'>
-                            <div class='reminder-title'>{r.get('title')}</div>
-                            <div class='reminder-meta'>{str(r.get('message', ''))[:140]}<br>Due: {format_due_date(r.get('due_date'))}</div>
-                        </div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    else:
-        st.success("All step reminders are completed. Great pace! 🎉")
-
-def render_final_pack_tab(project, steps, project_id):
-    st.markdown("## 🏆 Final Project Pack")
-    st.caption("Unlocks after the whole roadmap is finished.")
-    packs = st.session_state.setdefault("local_final_packs", {})
-    existing = packs.get(str(project_id))
-    all_done = bool(steps) and all(s.get("status") == "completed" for s in steps)
-    if not all_done:
-        done = sum(1 for s in steps if s.get("status") == "completed")
-        total = len(steps)
-        st.warning(
-            f"🔒 The Final Pack unlocks after you finish all roadmap steps — you're at {done}/{total}."
-        )
-        return
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("🎁 Generate / Refresh Final Pack", type="primary", use_container_width=True):
-            with st.spinner("Building your final pack..."):
-                packs[str(project_id)] = generate_final_pack(project, steps)
-                save_local_state()
-            existing = packs.get(str(project_id))
-    with c2:
-        if existing:
-            report_text = "\n\n".join(str(existing.get(k, "")) for k in ["report", "viva", "github_lines", "linkedin_lines", "devpost_lines"])
-            st.download_button(
-                "⬇ Download Full Pack (txt)",
-                data=report_text,
-                file_name=f"final_pack_{str(project.get('title', 'project'))[:30].replace(' ', '_')}.txt",
-                mime="text/plain",
-                use_container_width=True,
-            )
-    if not existing:
-        st.info("🎉 All steps done! Click 'Generate Final Pack' to build your report, viva prep, and share posts.")
-        return
-    st.markdown("### 📄 Project Report")
-    st.markdown(existing.get("report", "No report generated."))
-    st.markdown("### ❓ Viva Questions")
-    st.markdown(existing.get("viva", "No viva questions generated."))
-    st.markdown("### 🐙 GitHub README (ready to paste)")
-    st.code(existing.get("github_lines", ""), language="markdown")
-    st.markdown("### 💼 LinkedIn Post (ready to paste)")
-    st.code(existing.get("linkedin_lines", ""), language="markdown")
-    st.markdown("### 🏆 Devpost / Hackathon Description (ready to paste)")
-    st.code(existing.get("devpost_lines", ""), language="markdown")
-
-def show_workspace_page():
-    project_id = st.session_state.get("active_project_id")
-    project = st.session_state.get("active_project")
-    if not project_id or not project:
-        st.session_state["page"] = "projects"
-        st.rerun()
-    render_top_bar()
-    st.markdown(f"<div class='workspace-title'>{project.get('title')}</div>", unsafe_allow_html=True)
-    badges = (
-        difficulty_badge_html(project.get("difficulty", "Intermediate"))
-        + f'<span class="time-badge">⏱ {project.get("estimated_time") or project.get("duration") or ""}</span>'
-        + f'<span class="domain-badge">{project.get("domain", "General")}</span>'
-    )
-    st.markdown(badges, unsafe_allow_html=True)
-    steps = get_project_steps(project_id)
-    try:
-        sync_reminders_with_steps(project_id, steps)
-    except Exception:
-        pass
-    done = sum(1 for s in steps if s.get("status") == "completed")
-    progress = int((done / len(steps)) * 100) if steps else 0
-    st.progress(progress)
-    st.caption(f"Progress: {done}/{len(steps)} stages completed")
-    tab_overview, tab_timeline, tab_roadmap, tab_chat, tab_reminders, tab_final = st.tabs(
-        ["📌 Overview", "📍 Timeline", "🧭 Roadmap", "💬 Mentor Chat", "🔔 Reminders", "🏆 Final Pack"]
-    )
-    with tab_overview:
-        st.markdown("### Project Overview")
-        st.write(f"**Title:** {project.get('title', 'N/A')}")
-        st.write(f"**Description:** {project.get('description', 'N/A')}")
-        st.write(f"**Domain:** {project.get('domain', 'N/A')}")
-        st.write(f"**Difficulty:** {project.get('difficulty', 'N/A')}")
-        st.write(f"**Estimated duration:** {project.get('estimated_time') or project.get('duration') or 'N/A'}")
-        st.write(f"**Skills:** {project.get('skills', 'N/A')}")
-        idea_steps = [s for s in steps if s.get("origin") == "chat_idea"]
-        if idea_steps:
-            st.markdown("### 💡 Your mid-project ideas (added to roadmap)")
-            for s in idea_steps:
-                st.markdown(f"- **{s.get('title', '')}** — *AI verdict: {s.get('verdict', '')}*")
-    with tab_timeline:
-        render_timeline(steps, project_id)
-    with tab_roadmap:
-        st.caption("Gated roadmap: complete each checklist to unlock the next stage.")
-        render_gated_roadmap(steps, project_id)
-    with tab_chat:
-        render_mentor_chat(project, steps, project_id)
-    with tab_reminders:
-        render_reminders_tab(project_id)
-    with tab_final:
-        render_final_pack_tab(project, steps, project_id)
-
-# ======================================================
-# ROUTING
-# ======================================================
-if not st.session_state["user"]:
-    show_login_page()
-elif st.session_state.get("page") == "projects":
-    show_projects_page()
-elif st.session_state.get("page") == "bookmarks":
-    show_bookmarks_page()
-elif st.session_state.get("page") == "workspace":
-    show_workspace_page()
-else:
-    show_home_page()
