@@ -75,6 +75,8 @@ def get_secret_value(*paths):
         ("email", "SMTP_USER"): ["SMTP_USER", "EMAIL_SMTP_USER"],
         ("email", "SMTP_PASSWORD"): ["SMTP_PASSWORD", "EMAIL_SMTP_PASSWORD"],
         ("email", "FROM_EMAIL"): ["FROM_EMAIL", "EMAIL_FROM", "EMAIL_FROM_EMAIL"],
+        ("email", "RESEND_API_KEY"): ["RESEND_API_KEY"],
+        ("RESEND_API_KEY",): ["RESEND_API_KEY"],
     }
     for path in paths:
         for name in env_names.get(tuple(path), []):
@@ -105,10 +107,15 @@ SMTP_PASSWORD = get_secret_value(("email", "SMTP_PASSWORD")).replace(" ", "")
 FROM_EMAIL = get_secret_value(("email", "FROM_EMAIL")) or SMTP_USER
 EMAIL_ENABLED = bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD and FROM_EMAIL)
 
+# Resend (HTTPS email API — works on Render where SMTP is blocked)
+RESEND_API_KEY = get_secret_value(("email", "RESEND_API_KEY"), ("RESEND_API_KEY",))
+RESEND_FROM = get_secret_value(("email", "RESEND_FROM")) or "onboarding@resend.dev"
+
 # Startup diagnostic (visible in Render logs)
 print(
     f"STARTUP: EMAIL_ENABLED={EMAIL_ENABLED} HOST={SMTP_HOST} PORT={SMTP_PORT} "
     f"USER={SMTP_USER} PASS_LEN={len(SMTP_PASSWORD)} FROM={FROM_EMAIL} "
+    f"RESEND={'yes' if RESEND_API_KEY else 'no'} "
     f"SUPABASE={'yes' if supabase else 'no'} GEMINI={'yes' if GEMINI_API_KEY else 'no'}",
     flush=True,
 )
@@ -120,7 +127,7 @@ if genai and GEMINI_API_KEY:
         pass
 
 # ======================================================
-# DOMAIN DATA (Explore button)
+# DOMAIN DATA
 # ======================================================
 DOMAINS = {
     "Artificial Intelligence": {
@@ -837,9 +844,6 @@ def local_login(email, password):
     return "Invalid email or password."
 
 def signup_user(full_name, email, password):
-    """Try Supabase first; fall back to local store if unavailable.
-    Returns (error, created). __ACCOUNT_EXISTS__ = treat as verified, log in instead.
-    """
     if supabase:
         try:
             supabase.auth.sign_up({
@@ -882,36 +886,62 @@ def account_exists(email):
     return _safe_key(email) in _load_store().get("_local_auth", {})
 
 # ======================================================
-# EMAIL — verbose debugging + 587/465 fallback
+# EMAIL — Resend (HTTPS) primary, SMTP fallback
 # ======================================================
-def _try_smtp(host, port, user, password, msg, use_ssl=False):
-    """Send via SMTP. Tries STARTTLS (587) or SSL (465)."""
-    if use_ssl:
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(host, port, timeout=20, context=context) as server:
-            server.login(user, password)
-            server.send_message(msg)
-    else:
-        with smtplib.SMTP(host, port, timeout=20) as server:
-            server.ehlo()
-            server.starttls(context=ssl.create_default_context())
-            server.ehlo()
-            server.login(user, password)
-            server.send_message(msg)
-
 def send_email_notification(to_email, subject, body):
+    """
+    Send email. Uses Resend HTTPS API (works on Render) if RESEND_API_KEY is set.
+    Otherwise falls back to SMTP (works locally, blocked on Render free tier).
+    """
     print(
-        f"SMTP DEBUG: host={SMTP_HOST} port={SMTP_PORT} user={SMTP_USER} "
-        f"enabled={EMAIL_ENABLED} to={to_email} pass_len={len(SMTP_PASSWORD)}",
+        f"EMAIL DEBUG: to={to_email} resend={'yes' if RESEND_API_KEY else 'no'} "
+        f"smtp_enabled={EMAIL_ENABLED}",
         flush=True,
     )
 
-    if not EMAIL_ENABLED or not to_email:
+    if not to_email:
+        st.session_state["last_email_status"] = "No recipient email provided."
+        return False
+
+    # Preferred: Resend HTTPS API
+    if RESEND_API_KEY:
+        try:
+            resp = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": RESEND_FROM,
+                    "to": [to_email],
+                    "subject": subject,
+                    "text": body,
+                },
+                timeout=20,
+            )
+            if resp.status_code in (200, 201):
+                st.session_state["last_email_status"] = f"✅ Email sent to {to_email}"
+                print(f"EMAIL DEBUG: ✅ Resend success {resp.status_code}", flush=True)
+                return True
+            else:
+                err = f"Resend {resp.status_code}: {resp.text[:200]}"
+                st.session_state["last_email_status"] = f"❌ {err}"
+                print(f"EMAIL ERROR: {err}", flush=True)
+                return False
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+            st.session_state["last_email_status"] = f"❌ Resend failed: {err}"
+            print(f"EMAIL ERROR: {err}", flush=True)
+            return False
+
+    # Fallback: SMTP (local only)
+    if not EMAIL_ENABLED:
         st.session_state["last_email_status"] = (
-            "Email not sent: SMTP is not configured. Set the [email] block in .streamlit/secrets.toml "
-            "(local) or the SMTP_* environment variables (Render)."
+            "Email not configured: set RESEND_API_KEY (recommended for Render) "
+            "or the [email] SMTP settings in .streamlit/secrets.toml."
         )
-        print("SMTP DEBUG: EMAIL_ENABLED is False or to_email empty", flush=True)
+        print("EMAIL DEBUG: no RESEND_API_KEY and SMTP not configured", flush=True)
         return False
 
     try:
@@ -920,24 +950,19 @@ def send_email_notification(to_email, subject, body):
         msg["From"] = FROM_EMAIL
         msg["To"] = to_email
         msg.set_content(body)
-
-        # Try STARTTLS (587) first, then SSL (465) as fallback
-        try:
-            _try_smtp(SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, msg, use_ssl=False)
-        except Exception as first_err:
-            print(
-                f"SMTP DEBUG: STARTTLS failed ({type(first_err).__name__}: {first_err}), trying SSL 465",
-                flush=True,
-            )
-            _try_smtp(SMTP_HOST, 465, SMTP_USER, SMTP_PASSWORD, msg, use_ssl=True)
-
-        st.session_state["last_email_status"] = f"✅ Email sent to {to_email}"
-        print("SMTP DEBUG: ✅ Email sent successfully", flush=True)
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            server.ehlo()
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        st.session_state["last_email_status"] = f"✅ Email sent via SMTP to {to_email}"
+        print("EMAIL DEBUG: ✅ SMTP success", flush=True)
         return True
     except Exception as e:
-        err_text = f"{type(e).__name__}: {e}"
-        st.session_state["last_email_status"] = f"❌ Email failed: {err_text}"
-        print(f"SMTP ERROR: {err_text}", flush=True)
+        err = f"{type(e).__name__}: {e}"
+        st.session_state["last_email_status"] = f"❌ SMTP failed: {err}"
+        print(f"EMAIL ERROR: {err}", flush=True)
         return False
 
 # ======================================================
@@ -977,7 +1002,6 @@ def format_due_date(date_value):
 def create_project_reminders(project_id, project, steps):
     start_date = datetime.utcnow().date()
     title = project.get("title", "your project")
-
     append_project_reminder(project_id, make_reminder(
         project_id,
         "Project started",
@@ -985,7 +1009,6 @@ def create_project_reminders(project_id, project, steps):
         start_date,
         "info",
     ))
-
     gap_days = 3 if normalize_difficulty(project.get("difficulty", "")) != "Advanced" else 5
     plan_lines = []
     plan_map = st.session_state.setdefault("local_reminder_plan", {}).setdefault(str(project_id), {})
@@ -1002,7 +1025,7 @@ def create_project_reminders(project_id, project, steps):
         append_project_reminder(project_id, reminder)
         plan_lines.append(f"Step {step.get('step_no', idx)} — {step.get('title', '')}: target {format_due_date(due)}")
     save_local_state()
-    if EMAIL_ENABLED and plan_lines:
+    if plan_lines:
         send_email_notification(
             current_user_email(),
             f"Your project plan: {title}",
@@ -1434,7 +1457,6 @@ def heuristic_upload_analysis(combined_text, file_names):
         "IoT/Embedded": ["sensor", "arduino", "raspberry", "gpio", "serial"],
     }
     detected = [d for d, keys in domain_hits.items() if any(k in text for k in keys)][:4] or ["General Software"]
-
     appreciation = (
         f"👏 Nice work getting {len(file_names)} file(s) to this stage — you already have "
         f"{', '.join(detected[:2])} working together, and that's the hardest part of any project. "
@@ -1753,7 +1775,6 @@ def mentor_reply(project, steps, user_message, chat_history=None):
     else:
         step_title = "Final preparation"
         step_description = "Prepare final report, PPT, screenshots, and viva answers."
-
     history_text = "\n".join(
         f"{m.get('role', 'user')}: {str(m.get('message', ''))[:200]}"
         for m in (chat_history or [])[-8:]
@@ -1762,7 +1783,6 @@ def mentor_reply(project, steps, user_message, chat_history=None):
     if model is None:
         return ("AI mentor is offline right now (Gemini API not connected). "
                 "Meanwhile: focus on the current roadmap step's checklist.")
-
     prompt = f"""
 You are the AI Project Mentor for an engineering student.
 
@@ -1776,7 +1796,7 @@ Recent conversation:
 Student asked: "{user_message}"
 
 Answer rules:
-1. FIRST LINE = the actual answer. Never open with "That's a great question" or similar filler.
+1. FIRST LINE = the actual answer. Never open with filler.
 2. Answer every part of the question.
 3. Maximum 170 words.
 4. Short bullets or short lines. No long code.
@@ -1889,7 +1909,6 @@ def complete_step(step, project_id, proof=None):
         if str(step_no) in str(r.get("title", "")) and r.get("status") == "pending":
             r["status"] = "completed"
             r["message"] = f"Completed: {step_title}"
-
     steps_after = st.session_state["local_roadmaps"].get(pid, [])
     pending_steps = [s for s in steps_after if s.get("status") != "completed"]
     if pending_steps:
@@ -1904,7 +1923,6 @@ def complete_step(step, project_id, proof=None):
         )
     if not pid.startswith("local_") and step.get("id"):
         db_update("roadmap_steps", step["id"], {"status": "completed", "completed_at": datetime.utcnow().isoformat()})
-
     proof = st.session_state.get("local_step_proofs", {}).get(_proof_key(project_id, step_no))
     proof_line = f"Proof attached: {proof.get('name', 'n/a')}" if proof else "No proof attached."
     send_email_notification(
@@ -2300,10 +2318,8 @@ def show_login_page():
             st.session_state["login_email"] = post_verify_email
         if st.session_state.get("auth_mode") not in ("Login", "Signup"):
             st.session_state["auth_mode"] = "Login"
-
         mode = st.radio("Choose", ["Login", "Signup"], horizontal=True,
                         label_visibility="collapsed", key="auth_mode")
-
         if mode == "Login":
             if st.session_state.pop("signup_done", None):
                 st.success("Account verified! Please log in to continue.")
