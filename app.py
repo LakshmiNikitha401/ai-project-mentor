@@ -3,11 +3,13 @@ import json
 import re
 import secrets
 import hashlib
-import smtplib
 import concurrent.futures
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from email.message import EmailMessage
+from email.mime.text import MIMEText
+import base64
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -75,12 +77,13 @@ GEMINI_API_KEY = get_secret_value(
     ("GOOGLE_API_KEY",),
 )
 
-SMTP_HOST = get_secret_value(("email", "SMTP_HOST"))
-SMTP_PORT = int(get_secret_value(("email", "SMTP_PORT")) or 587)
-SMTP_USER = get_secret_value(("email", "SMTP_USER"))
-SMTP_PASSWORD = get_secret_value(("email", "SMTP_PASSWORD"))
-FROM_EMAIL = get_secret_value(("email", "FROM_EMAIL")) or SMTP_USER
-EMAIL_ENABLED = bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD and FROM_EMAIL)
+# Gmail API credentials from Render environment
+GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
+GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
+GMAIL_REFRESH_TOKEN = os.environ.get('GMAIL_REFRESH_TOKEN')
+GMAIL_SENDER = os.environ.get('GMAIL_SENDER')
+
+EMAIL_ENABLED = bool(GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET and GMAIL_REFRESH_TOKEN and GMAIL_SENDER)
 
 if genai and GEMINI_API_KEY:
     try:
@@ -886,26 +889,57 @@ def login_user(email, password):
     return local_login(email, password)
 
 # ======================================================
-# EMAIL NOTIFICATIONS
+# EMAIL NOTIFICATIONS (Google Gmail REST API)
 # ======================================================
 def send_email_notification(to_email, subject, body):
-    if not EMAIL_ENABLED or not to_email:
-        st.session_state["last_email_status"] = (
-            "Email not sent: SMTP is not configured in .streamlit/secrets.toml."
-        )
+    if not to_email:
+        st.session_state["last_email_status"] = "Email not sent: No recipient specified."
         return False
+    
+    if not EMAIL_ENABLED:
+        st.session_state["last_email_status"] = "Email failed: Missing Gmail API credentials in environment."
+        return False
+
     try:
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = FROM_EMAIL
-        msg["To"] = to_email
-        msg.set_content(body)
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
-        st.session_state["last_email_status"] = f"Email sent to {to_email}"
-        return True
+        # 1. Trade refresh token for a fresh access token
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            'client_id': GMAIL_CLIENT_ID,
+            'client_secret': GMAIL_CLIENT_SECRET,
+            'refresh_token': GMAIL_REFRESH_TOKEN,
+            'grant_type': 'refresh_token'
+        }
+        token_res = requests.post(token_url, data=token_data, timeout=10)
+        access_token = token_res.json().get('access_token')
+
+        if not access_token:
+            st.session_state["last_email_status"] = f"Auth failed: {token_res.text}"
+            return False
+
+        # 2. Build the email
+        msg = MIMEText(body, 'plain')
+        msg['To'] = to_email
+        msg['From'] = GMAIL_SENDER
+        msg['Subject'] = subject
+
+        # 3. Encode for Gmail API
+        raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+        # 4. Send via Gmail REST API (Port 443 - Render cannot block this)
+        send_url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        send_res = requests.post(send_url, headers=headers, json={'raw': raw_message}, timeout=10)
+
+        if send_res.status_code == 200:
+            st.session_state["last_email_status"] = f"Email sent to {to_email}"
+            return True
+        else:
+            st.session_state["last_email_status"] = f"Google API Error: {send_res.text}"
+            return False
+
     except Exception as e:
         st.session_state["last_email_status"] = f"Email failed: {e}"
         return False
@@ -2245,7 +2279,7 @@ def _render_signup_form():
                 # the OTP step will pick up signup_otp on the next pass.
             else:
                 st.session_state.pop("signup_otp", None)
-                st.error("Could not send the verification email. Check the [email] SMTP settings in .streamlit/secrets.toml.")
+                st.error(f"Could not send the verification email. Status: {st.session_state.get('last_email_status', '')}")
 
 def _verify_signup_otp(code):
     """Step 2 verification: on success creates the account. Returns error string or None."""
@@ -2330,7 +2364,7 @@ def _render_otp_step():
                 st.session_state["otp_notice"] = f"New code sent to {otp['email']}"
                 st.rerun()
             else:
-                st.error("Could not resend the email. Check the [email] SMTP settings.")
+                st.error(f"Could not resend the email. Status: {st.session_state.get('last_email_status', '')}")
     with col_b:
         if st.button("Back", use_container_width=True):
             st.session_state.pop("signup_otp", None)
