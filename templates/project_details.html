@@ -1,0 +1,115 @@
+{% extends "base_app.html" %}
+
+{% block title %}{{ project.title }}{% endblock %}
+
+{% block content %}
+<!-- Breadcrumbs -->
+<div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;">
+    <a href="/discover" style="color: var(--text-secondary); text-decoration: none;">Projects</a> 
+    <span style="margin: 0 8px;">/</span> 
+    <span style="color: var(--text);">{{ project.title }}</span>
+</div>
+
+<!-- Page Header -->
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+    <div class="header-text">
+        <span class="eyebrow">PROJECT DETAILS</span>
+        <h1>{{ project.title }}</h1>
+        <p style="max-width: 600px;">{{ project.description }}</p>
+    </div>
+    
+    <div style="display: flex; gap: 12px;">
+        <!-- Bookmark Form -->
+        <form method="POST" action="/bookmarks/toggle/{{ project.id }}" style="margin: 0;">
+            {% if bookmarked %}
+                <button type="submit" class="btn-secondary" style="display: flex; align-items: center; gap: 8px; color: var(--accent); border-color: var(--accent);">
+                    <i data-lucide="bookmark-check"></i> Bookmarked
+                </button>
+            {% else %}
+                <button type="submit" class="btn-secondary" style="display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="bookmark"></i> Bookmark
+                </button>
+            {% endif %}
+        </form>
+        
+        <!-- Start Project Form -->
+        <form method="POST" action="/projects/{{ project.id }}/start" style="margin: 0;">
+            <button type="submit" class="btn-primary">Start Project</button>
+        </form>
+    </div>
+</div>
+
+<div class="dashboard-grid" style="grid-template-columns: 2fr 1fr;">
+    <!-- Left Column -->
+    <div>
+        <div class="dash-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3>Overview</h3>
+            </div>
+            <p style="color: var(--text-secondary); line-height: 1.6;">{{ project.description }}</p>
+            
+            <h4 style="margin-top: 24px; margin-bottom: 12px; font-family: var(--font-sans); font-size: 14px; color: var(--text-secondary); text-transform: uppercase;">Required Skills</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                {% if project.skills %}
+                    {% for skill in project.skills %}
+                        <span class="badge domain">{{ skill }}</span>
+                    {% endfor %}
+                {% else %}
+                    <span class="badge domain">Python</span>
+                    <span class="badge domain">Problem Solving</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="dash-card">
+            <div class="card-header">
+                <h3>Proposed Milestones</h3>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot dot-current">1</div>
+                <div>
+                    <strong>Understand & Setup</strong>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Define the problem, gather resources, and set up your environment.</p>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot dot-locked">2</div>
+                <div>
+                    <strong>Core Implementation</strong>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Build the main logic and algorithm for the project.</p>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot dot-locked">3</div>
+                <div>
+                    <strong>Evaluation & Report</strong>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Test your results, write the report, and prepare the presentation.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    <div>
+        <div class="dash-card">
+            <div class="card-header">
+                <h3>Project Facts</h3>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <span style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase;">Domain</span>
+                    <div style="font-weight: 500;">{{ project.domain }}</div>
+                </div>
+                <div>
+                    <span style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase;">Difficulty</span>
+                    <div><span class="badge {{ project.difficulty|lower }}">{{ project.difficulty }}</span></div>
+                </div>
+                <div>
+                    <span style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase;">Estimated Duration</span>
+                    <div style="font-weight: 500;">4 - 6 Weeks</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

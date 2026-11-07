@@ -1,0 +1,153 @@
+{% extends "base_app.html" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom: 24px;">
+    <div class="header-text">
+        <span class="eyebrow">OVERVIEW</span>
+        <h1>{{ greeting }}, {{ user_name }}.</h1>
+        <p>Here's where your project stands today.</p>
+    </div>
+</div>
+
+{% if active_project %}
+    <!-- Next Best Action Ribbon -->
+    <div class="nba-card" style="margin-bottom: 32px; padding: 20px 24px;">
+        <div class="nba-content">
+            <span class="badge domain" style="margin-bottom: 8px;">NEXT BEST ACTION</span>
+            <h3 style="font-size: 18px; margin-bottom: 4px;">Resume your roadmap.</h3>
+            <p>You are {{ active_project.progress_pct }}% complete with <strong>{{ active_project.title }}</strong>.</p>
+        </div>
+        <a href="/workspace/{{ active_project.id }}" class="btn-primary">Continue Project</a>
+    </div>
+
+    <div class="dashboard-grid">
+        
+        <!-- Active Project Card -->
+        <div class="dash-card">
+            <div class="card-header">
+                <h3>Recent Project</h3>
+                <a href="/workspace/{{ active_project.id }}" style="font-size: 13px; color: var(--text-secondary); text-decoration: none;">View Roadmap →</a>
+            </div>
+            
+            <h4 style="font-family: var(--font-serif); font-size: 22px; margin-bottom: 12px;">{{ active_project.title }}</h4>
+            
+            <div style="display: flex; gap: 8px; margin-bottom: 24px;">
+                <span class="badge domain">{{ active_project.domain.split(',')[0] }}</span>
+                <span class="badge {{ active_project.difficulty|lower }}">{{ active_project.difficulty }}</span>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                    <span style="font-weight: 500;">Overall Progress</span>
+                    <span style="font-weight: 600; color: var(--accent);">{{ active_project.progress_pct }}%</span>
+                </div>
+                <div style="width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                    <div style="width: {{ active_project.progress_pct }}%; height: 100%; background: var(--accent);"></div>
+                </div>
+            </div>
+            
+            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(45,122,99,0.1); display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="flag" style="width: 16px; height: 16px; color: var(--accent);"></i>
+                </div>
+                <div>
+                    <span style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Current Milestone</span>
+                    <p style="font-size: 13px; font-weight: 500; margin-top: 2px;">In Progress</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recommendations Card -->
+        <div class="dash-card">
+            <div class="card-header">
+                <h3>Recommended for You</h3>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                {% for rec in recommendations %}
+                <div class="dash-list-item">
+                    <div>
+                        <h4 style="font-family: var(--font-sans); font-size: 14px; margin-bottom: 4px;">{{ rec.title }}</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary);">{{ rec.difficulty }} · {{ rec.domain.split(',')[0] }}</p>
+                    </div>
+                    <a href="/projects/{{ rec.id }}" class="icon-btn" style="text-decoration: none;"><i data-lucide="arrow-right"></i></a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Project Status Card -->
+        <div class="dash-card">
+            <div class="card-header">
+                <h3>Project Status</h3>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div style="background: var(--bg); border: 1px solid var(--border); padding: 16px; border-radius: 8px; text-align: center;">
+                    <span style="font-size: 24px; font-weight: 700; font-family: var(--font-serif); color: var(--accent);">{{ active_project.progress_pct }}%</span>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Roadmap Done</p>
+                </div>
+                <div style="background: var(--bg); border: 1px solid var(--border); padding: 16px; border-radius: 8px; text-align: center;">
+                    <span style="font-size: 24px; font-weight: 700; font-family: var(--font-serif);">{{ total_phases }}</span>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Total Phases</p>
+                </div>
+            </div>
+            <a href="/workspace/{{ active_project.id }}" class="btn-secondary" style="width: 100%; text-align: center; margin-top: 16px; text-decoration: none;">Open Roadmap</a>
+        </div>
+
+        <!-- Saved Bookmarks Card -->
+        <div class="dash-card">
+            <div class="card-header">
+                <h3>Saved Projects</h3>
+                <a href="/bookmarks" style="font-size: 13px; color: var(--text-secondary); text-decoration: none;">View All →</a>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                {% if bookmarks %}
+                    {% for bm in bookmarks %}
+                    <div class="dash-list-item">
+                        <div>
+                            <h4 style="font-family: var(--font-sans); font-size: 14px; margin-bottom: 4px;">{{ bm.title }}</h4>
+                            <p style="font-size: 12px; color: var(--text-secondary);">{{ bm.domain.split(',')[0] }}</p>
+                        </div>
+                        <a href="/projects/{{ bm.project_id }}" class="icon-btn" style="text-decoration: none;"><i data-lucide="bookmark"></i></a>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state" style="border: none; padding: 16px;">
+                        <p style="font-size: 13px;">No bookmarks yet.</p>
+                        <a href="/discover" style="font-size: 13px; color: var(--accent); text-decoration: none;">Discover Projects</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+{% else %}
+    <!-- STATE: NO ACTIVE PROJECT -->
+    <div class="nba-card">
+        <div class="nba-content">
+            <h3>Start by discovering a project.</h3>
+            <p>You haven't started a project yet. Explore the catalogue to find one that matches your skills.</p>
+        </div>
+        <a href="/discover" class="btn-primary">Discover Projects</a>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="dash-card">
+            <div class="card-header"><h3>Recent Project</h3></div>
+            <div class="card-empty">
+                <p>No active project yet.</p>
+                <a href="/discover" class="btn-secondary">Find a Project</a>
+            </div>
+        </div>
+        <div class="dash-card">
+            <div class="card-header"><h3>Recommended for You</h3></div>
+            <div class="card-empty">
+                <p>Start a project to see recommendations.</p>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+{% endblock %}

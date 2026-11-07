@@ -1,0 +1,56 @@
+{% extends "base_app.html" %}
+
+{% block title %}Research Library{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-text">
+        <span class="eyebrow">RESEARCH</span>
+        <h1>Research Library</h1>
+        <p>Search millions of open-access papers from arXiv.</p>
+    </div>
+</div>
+
+<!-- Search Bar -->
+<form method="GET" action="/research" class="search-form" style="margin-bottom: 32px;">
+    <div class="search-bar-container">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" name="q" value="{{ query }}" placeholder="Search topics, authors, or keywords (e.g., 'Federated Learning')..." class="search-input">
+        <button type="submit" class="btn-primary">Search</button>
+    </div>
+</form>
+
+<!-- Results -->
+<div class="results-container">
+    {% if results %}
+        <p class="results-count">Showing top {{ results|length }} results from arXiv</p>
+        
+        {% for paper in results %}
+        <div class="dash-card" style="margin-bottom: 16px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <h3 style="font-family: var(--font-serif); font-size: 18px; max-width: 80%;">{{ paper.title }}</h3>
+                <span class="badge domain">{{ paper.published }}</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">{{ paper.authors }}</p>
+            <p style="color: var(--text); font-size: 14px; line-height: 1.6; margin-bottom: 16px;">{{ paper.summary[:300] }}...</p>
+            
+            <a href="{{ paper.link }}" target="_blank" rel="noopener" class="btn-secondary" style="text-decoration: none; display: inline-block;">
+                Read Paper <i data-lucide="external-link" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-left: 4px;"></i>
+            </a>
+        </div>
+        {% endfor %}
+    {% elif query %}
+        <div class="empty-state">
+            <i data-lucide="file-search"></i>
+            <h3>No papers found</h3>
+            <p>Try broader keywords or check your spelling.</p>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <i data-lucide="book-open"></i>
+            <h3>Start your literature review</h3>
+            <p>Type a topic above to pull live academic papers.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}x

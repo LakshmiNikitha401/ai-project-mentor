@@ -1,0 +1,63 @@
+{% extends "base_app.html" %}
+
+{% block title %}My Bookmarks{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-text">
+        <span class="eyebrow">SAVED ITEMS</span>
+        <h1>My Bookmarks</h1>
+        <p>Keep track of projects you want to explore later.</p>
+    </div>
+</div>
+
+<div class="results-container">
+    {% if bookmarks %}
+        {% for project in bookmarks %}
+        <div class="project-card">
+            <div class="project-main">
+                <div class="project-badges">
+                    <span class="badge domain">{{ project.domain }}</span>
+                    <span class="badge difficulty {{ project.difficulty|lower }}">{{ project.difficulty }}</span>
+                </div>
+                
+                <h2 class="project-title">{{ project.title }}</h2>
+                <p class="project-desc">{{ project.description }}</p>
+                
+                <div class="project-skills">
+                    <strong>Skills:</strong> 
+                    {% if project.skills %}
+                        {{ project.skills | join(', ') }}
+                    {% else %}
+                        Python, Problem Solving
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="project-side">
+                <div class="project-actions">
+                    <!-- Changed to project.project_id -->
+                    <a href="/projects/{{ project.project_id }}" class="btn-secondary" style="text-decoration: none; display: flex; align-items: center; justify-content: center;">
+                        View Details
+                    </a>
+                    
+                    <!-- Remove Bookmark Form -->
+                    <form method="POST" action="/bookmarks/toggle/{{ project.project_id }}" style="width: 100%;">
+                        <button type="submit" class="btn-secondary" style="width: 100%; color: var(--color-error); border-color: var(--color-error);">
+                            Remove
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">
+            <i data-lucide="bookmark"></i>
+            <h3>No bookmarks yet</h3>
+            <p>When you find a project you like, click the Bookmark button to save it here.</p>
+            <a href="/discover" class="btn-primary">Discover Projects</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

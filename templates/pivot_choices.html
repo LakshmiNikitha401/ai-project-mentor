@@ -1,0 +1,42 @@
+{% extends "base_app.html" %}
+
+{% block title %}Pivot Project{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-text">
+        <span class="eyebrow">SCOPE EXPANSION</span>
+        <h1>Choose your new direction.</h1>
+        <p>Here is how you can upgrade <strong>{{ project.title }}</strong> into a major project.</p>
+    </div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 24px; max-width: 900px; margin: 0 auto;">
+    {% for idea in ideas %}
+    <div class="dash-card">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <h3 style="font-family: var(--font-sans);">{{ idea.title }}</h3>
+            <span class="badge domain">{{ idea.domain.split(',')[0] }}</span>
+        </div>
+        
+        <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 24px;">{{ idea.description }}</p>
+        
+        <div style="background: var(--bg); padding: 16px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 24px;">
+            <span style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); display: block; margin-bottom: 12px;">New Roadmap:</span>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                {% for step in idea.roadmap %}
+                <li style="margin-bottom: 8px; font-size: 13px; display: flex; gap: 8px;">
+                    <i data-lucide="check-circle" style="width: 14px; height: 14px; color: var(--accent);"></i>
+                    <span>{{ step.title }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <form method="POST" action="/pivot/apply/{{ loop.index0 }}">
+            <button type="submit" class="btn-primary" style="width: 100%;">Apply This Pivot</button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

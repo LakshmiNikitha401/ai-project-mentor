@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account - AI Project Mentor</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="auth-split">
+        <!-- Left Side: Branding -->
+        <div class="auth-left">
+            <div class="auth-branding">
+                <h2>Start your project journey.</h2>
+                <p>Transform your thesis idea into a structured, guided, and executable plan.</p>
+                <ul class="auth-feature-list">
+                    <li><span>✦</span> Personalized recommendations</li>
+                    <li><span>✦</span> Adaptive milestone tracking</li>
+                    <li><span>✦</span> Access to the Research Library</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Right Side: Form -->
+        <div class="auth-right">
+            <div class="auth-card" style="max-height: 90vh; overflow-y: auto;">
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, message in messages %}
+                      <!-- Using a class instead of inline styles for Jinja logic -->
+                      <div class="flash-message flash-{{ category }}">
+                        {{ message }}
+                      </div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
+                <h1>Create Account</h1>
+                <p class="subtitle">Join the platform to begin your thesis.</p>
+                
+                <form method="POST" action="/register" id="registerForm">
+                    <div class="form-group">
+                        <label for="name">Full Name</label>
+                        <input type="text" id="name" name="name" placeholder="Jane Doe" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" placeholder="student@university.edu" required>
+                    </div>
+                    
+                    <!-- DEGREE SELECTION -->
+                    <div class="form-group">
+                        <label for="degree_level">Degree Level</label>
+                        <select id="degree_level" name="degree_level" onchange="toggleCustomDegree()" style="width:100%; padding:12px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px;" required>
+                            <option value="" disabled selected>Select your degree</option>
+                            <option value="B.Tech">B.Tech</option>
+                            <option value="M.Tech">M.Tech</option>
+                            <option value="B.Sc">B.Sc</option>
+                            <option value="M.Sc">M.Sc</option>
+                            <option value="BCA">BCA</option>
+                            <option value="MCA">MCA</option>
+                            <option value="PhD">PhD</option>
+                            <option value="Other">Other (Please specify)</option>
+                        </select>
+                    </div>
+
+                    <!-- CUSTOM DEGREE INPUT -->
+                    <div class="form-group" id="customDegreeGroup" style="display: none;">
+                        <label for="custom_degree">Please specify your degree</label>
+                        <input type="text" id="custom_degree" name="custom_degree" placeholder="E.g., B.Des, MBA, etc.">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="department">Department</label>
+                        <input type="text" id="department" name="department" placeholder="Computer Science" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="skills">Key Skills (comma separated)</label>
+                        <input type="text" id="skills" name="skills" placeholder="Python, Machine Learning, SQL" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" placeholder="At least 8 characters" required minlength="8">
+                    </div>
+                    <button type="submit" id="submitBtn" class="btn-primary auth-submit">Create Account</button>
+                </form>
+
+                <div class="auth-footer">
+                    Already have an account? <a href="/login">Sign in</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add the CSS for the flash messages here -->
+    <style>
+        .flash-message {
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-size: 14px;
+            color: white;
+        }
+        .flash-error {
+            background-color: #4A1C1C;
+            border: 1px solid #8B3A3A;
+        }
+        .flash-success {
+            background-color: #1C4A2E;
+            border: 1px solid #3A8B5C;
+        }
+    </style>
+
+    <script>
+        // Logic to show/hide the custom degree input
+        function toggleCustomDegree() {
+            const select = document.getElementById('degree_level');
+            const customGroup = document.getElementById('customDegreeGroup');
+            const customInput = document.getElementById('custom_degree');
+
+            if (select.value === 'Other') {
+                customGroup.style.display = 'block';
+                customInput.required = true;
+            } else {
+                customGroup.style.display = 'none';
+                customInput.required = false;
+            }
+        }
+
+        document.getElementById('registerForm').addEventListener('submit', function() {
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Sending OTP...';
+            btn.style.opacity = '0.7';
+        });
+    </script>
+</body>
+</html>

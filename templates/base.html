@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Project Mentor</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+</head>
+<body>
+    
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="brand-logo">AI Project Mentor</a>
+            <div class="nav-links">
+                <!-- These now pass a parameter to the home route -->
+                <a href="/?view=features">Features</a>
+                <a href="/?view=how-it-works">How It Works</a>
+                <a href="/?view=research">Research</a>
+                <a href="/login">Sign In</a>
+                <a href="/register" class="btn-primary">Get Started</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

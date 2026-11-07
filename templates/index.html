@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .landing-section {
+        padding: 40px 0;
+        max-width: 1080px;
+        margin: 0 auto;
+        animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .section-title {
+        text-align: center;
+        font-family: var(--font-serif);
+        font-size: 32px;
+        margin-bottom: 48px;
+        color: var(--text);
+    }
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 32px;
+    }
+    .feature-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 32px;
+        text-align: left;
+    }
+    .feature-icon {
+        width: 48px;
+        height: 48px;
+        background: rgba(45, 122, 99, 0.1);
+        color: var(--accent);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 24px;
+    }
+    .feature-icon svg {
+        width: 24px;
+        height: 24px;
+    }
+    .how-it-works {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+    }
+    .step {
+        flex: 1;
+        text-align: center;
+    }
+    .step-num {
+        width: 40px;
+        height: 40px;
+        background: var(--accent);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 18px;
+        margin: 0 auto 16px auto;
+    }
+</style>
+
+<!-- HERO SECTION (Shows by default) -->
+{% if not view or view == 'home' %}
+<div class="hero-section" style="margin-top: 10vh;">
+    <h1 class="hero-title">From project idea to confident execution.</h1>
+    <p class="hero-subtitle">An academically rigorous platform for discovering, planning, and building your academic project.</p>
+    
+    <div style="margin-top: 32px;">
+        <a href="/login" class="btn-primary">Sign In</a>
+        <a href="/register" class="btn-secondary">Create Account</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- HOW IT WORKS (Shows only if clicked) -->
+{% if view == 'how-it-works' %}
+<div class="landing-section">
+    <h2 class="section-title">How It Works</h2>
+    <div class="how-it-works">
+        <div class="step">
+            <div class="step-num">1</div>
+            <h3 style="font-family: var(--font-sans); font-size: 18px; margin-bottom: 8px;">Discover</h3>
+            <p style="font-size: 14px; color: var(--text-secondary);">Search our curated database of 500+ projects or generate custom ideas with AI.</p>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <h3 style="font-family: var(--font-sans); font-size: 18px; margin-bottom: 8px;">Plan</h3>
+            <p style="font-size: 14px; color: var(--text-secondary);">Get a dynamic, dependency-aware roadmap that unlocks tasks as you progress.</p>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <h3 style="font-family: var(--font-sans); font-size: 18px; margin-bottom: 8px;">Build & Evaluate</h3>
+            <p style="font-size: 14px; color: var(--text-secondary);">Use the AI Mentor and Academic Studio to write your report and prepare for your viva.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- FEATURES (Shows only if clicked) -->
+{% if view == 'features' %}
+<div class="landing-section">
+    <h2 class="section-title">Platform Features</h2>
+    <div class="feature-grid">
+        <div class="feature-card">
+            <div class="feature-icon"><i data-lucide="compass"></i></div>
+            <h3 style="font-family: var(--font-sans); font-size: 18px; margin-bottom: 8px;">Project Discovery</h3>
+            <p style="font-size: 14px; color: var(--text-secondary);">TF-IDF search algorithm ranks projects based on your natural language queries.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon"><i data-lucide="message-square"></i></div>
+            <h3 style="font-family: var(--font-sans); font-size: 18px; margin-bottom: 8px;">AI Mentor</h3>
+            <p style="font-size: 14px; color: var(--text-secondary);">Context-aware guidance powered by Groq (with Gemini fallback) to help you debug.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon"><i data-lucide="pen-tool"></i></div>
+            <h3 style="font-family: var(--font-sans); font-size: 18px; margin-bottom: 8px;">Academic Studio</h3>
+            <p style="font-size: 14px; color: var(--text-secondary);">Generate abstracts, methodology sections, and viva questions instantly.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- RESEARCH (Shows only if clicked) -->
+{% if view == 'research' %}
+<div class="landing-section">
+    <h2 class="section-title">Research Library</h2>
+    <div style="text-align: center; max-width: 600px; margin: 0 auto;">
+        <p style="font-size: 16px; color: var(--text-secondary); margin-bottom: 24px;">Stop searching endless tabs. Our integrated Research Library pulls live papers directly from arXiv so you can build your literature review without ever leaving the platform.</p>
+        <a href="/register" class="btn-primary">Start Your Literature Review</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

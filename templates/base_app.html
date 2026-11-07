@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %} - AI Project Mentor</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="app-body">
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <a href="/dashboard">AI Project Mentor</a>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <div class="nav-group">
+                <span class="nav-label">Workspace</span>
+                <a href="/dashboard" class="nav-item {% if request.path == '/dashboard' %}active{% endif %}">
+                    <i data-lucide="layout-dashboard"></i> Overview
+                </a>
+                <a href="/discover" class="nav-item {% if request.path == '/discover' %}active{% endif %}">
+                    <i data-lucide="compass"></i> Discover Projects
+                </a>
+                <a href="/my-workspace" class="nav-item {% if request.path == '/my-workspace' %}active{% endif %}">
+                    <i data-lucide="briefcase"></i> My Workspace
+                </a>
+            </div>
+            
+            <div class="nav-group">
+                <span class="nav-label">Tools</span>
+                <a href="/research" class="nav-item {% if request.path == '/research' %}active{% endif %}">
+                    <i data-lucide="book-open"></i> Research Library
+                </a>
+                <a href="/mentor" class="nav-item {% if request.path == '/mentor' %}active{% endif %}">
+                    <i data-lucide="message-square"></i> AI Mentor
+                </a>
+                <a href="/studio" class="nav-item {% if request.path == '/studio' %}active{% endif %}">
+                    <i data-lucide="pen-tool"></i> Academic Studio
+                </a>
+                <a href="/analyzer" class="nav-item {% if request.path == '/analyzer' %}active{% endif %}">
+                    <i data-lucide="scan-line"></i> Project Analyzer
+                </a>
+            </div>
+            
+            <div class="nav-group">
+                <span class="nav-label">Account</span>
+                <a href="/bookmarks" class="nav-item {% if request.path == '/bookmarks' %}active{% endif %}">
+                    <i data-lucide="bookmark"></i> Bookmarks
+                </a>
+                <a href="/reminders" class="nav-item {% if request.path == '/reminders' %}active{% endif %}">
+                    <i data-lucide="bell"></i> Reminders
+                </a>
+                <a href="/settings" class="nav-item {% if request.path == '/settings' %}active{% endif %}">
+                    <i data-lucide="settings"></i> Settings
+                </a>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-profile">
+                <div class="avatar">{{ session.get('full_name', 'U')[0] | upper }}</div>
+                <div class="user-info">
+                    <span class="user-name">{{ session.get('full_name', 'Student') }}</span>
+                    <span class="user-email">{{ session.get('user_email', '') }}</span>
+                </div>
+            </div>
+            <a href="/logout" class="logout-btn"><i data-lucide="log-out"></i> Log out</a>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+        <!-- Top Bar (Stage Strip) -->
+        <header class="topbar">
+            <div class="stage-strip">
+                <div class="stage {% if request.path == '/discover' %}active{% endif %}">1 · Discover</div>
+                <div class="stage-arrow">→</div>
+                <div class="stage {% if request.path.startswith('/workspace') or request.path == '/my-workspace' %}active{% endif %}">2 · Plan</div>
+                <div class="stage-arrow">→</div>
+                <div class="stage {% if request.path == '/mentor' or request.path == '/analyzer' %}active{% endif %}">3 · Build</div>
+                <div class="stage-arrow">→</div>
+                <div class="stage {% if request.path == '/studio' %}active{% endif %}">4 · Evaluate</div>
+            </div>
+            
+            <div class="topbar-actions">
+                <!-- Functional Search Link -->
+                <a href="/discover" class="icon-btn" title="Search Projects" style="text-decoration: none;">
+                    <i data-lucide="search"></i>
+                </a>
+                
+                <!-- Functional Help Button -->
+                <button class="icon-btn" onclick="document.getElementById('helpModal').style.display='flex'" title="Help & Guide">
+                    <i data-lucide="help-circle"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dynamic Page Content -->
+        <div class="page-content">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Global Help Modal -->
+    <div id="helpModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center;">
+        <div style="background: var(--surface); padding: 32px; border-radius: 12px; width: 90%; max-width: 600px; border: 1px solid var(--border); max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h2 style="font-family: var(--font-serif); margin: 0;">Platform Guide</h2>
+                <button onclick="document.getElementById('helpModal').style.display='none'" class="icon-btn" style="border: 1px solid var(--border);">
+                    <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 20px; color: var(--text);">
+                <div>
+                    <h3 style="font-family: var(--font-sans); font-size: 16px; color: var(--accent); margin-bottom: 4px;">1. Discover Projects</h3>
+                    <p style="font-size: 14px; color: var(--text-secondary);">Use the search bar or explore domains. You can also click "Brainstorm My Idea" to build a custom project with the AI.</p>
+                </div>
+                <div>
+                    <h3 style="font-family: var(--font-sans); font-size: 16px; color: var(--accent); margin-bottom: 4px;">2. Start a Roadmap</h3>
+                    <p style="font-size: 14px; color: var(--text-secondary);">When you find a project, click "Start Project". Select your timeline, and the AI will generate a step-by-step technical roadmap for you.</p>
+                </div>
+                <div>
+                    <h3 style="font-family: var(--font-sans); font-size: 16px; color: var(--accent); margin-bottom: 4px;">3. Ask the AI Mentor</h3>
+                    <p style="font-size: 14px; color: var(--text-secondary);">Stuck on a bug or need dataset ideas? Go to the AI Mentor, select your project context, and ask any technical question.</p>
+                </div>
+                <div>
+                    <h3 style="font-family: var(--font-sans); font-size: 16px; color: var(--accent); margin-bottom: 4px;">4. Project Analyzer</h3>
+                    <p style="font-size: 14px; color: var(--text-secondary);">Have a previous Minor project? Upload the report to the Analyzer, and the AI will suggest how to expand it into a Major project.</p>
+                </div>
+                <div>
+                    <h3 style="font-family: var(--font-sans); font-size: 16px; color: var(--accent); margin-bottom: 4px;">5. Academic Studio</h3>
+                    <p style="font-size: 14px; color: var(--text-secondary);">Use this to generate your Abstract, Methodology, Viva Questions, and Final Report based on your active project.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

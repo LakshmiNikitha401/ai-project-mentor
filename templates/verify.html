@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Email - AI Project Mentor</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="auth-split">
+        <!-- Left Side: Branding -->
+        <div class="auth-left">
+            <div class="auth-branding">
+                <h2>Verify your email.</h2>
+                <p>We've sent a 6-digit code to your inbox. Please enter it to activate your account.</p>
+                <ul class="auth-feature-list">
+                    <li><span>✦</span> Secure your workspace</li>
+                    <li><span>✦</span> Enable email reminders</li>
+                    <li><span>✦</span> Verify your academic identity</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Right Side: Form -->
+        <div class="auth-right">
+            <div class="auth-card">
+                
+                <!-- Flash Messages (Errors / Success) -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, message in messages %}
+                      <div style="padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 14px; 
+                                  background-color: {% if category == 'error' %}#4A1C1C{% else %}#1C4A2E{% endif %}; 
+                                  border: 1px solid {% if category == 'error' %}#8B3A3A{% else %}#3A8B5C{% endif %}; 
+                                  color: white;">
+                        {{ message }}
+                      </div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
+                <h1>Check your inbox</h1>
+                <p class="subtitle">Enter the 6-digit code sent to <b>{{ email }}</b>.</p>
+                
+                <form method="POST" action="/verify" id="verifyForm">
+                    <div class="form-group">
+                        <label for="otp">Verification Code</label>
+                        <input type="text" id="otp" name="otp" placeholder="123456" maxlength="6" required autocomplete="off">
+                    </div>
+                    <button type="submit" id="verifyBtn" class="btn-primary auth-submit">Verify & Create Account</button>
+                </form>
+
+                <!-- Resend / Start Over Section -->
+                <div style="margin-top: 24px; text-align: center; border-top: 1px solid var(--border); padding-top: 24px;">
+                    <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">Didn't receive the code?</p>
+                    <form method="GET" action="/register">
+                        <button type="submit" class="btn-secondary" style="width: 100%;">Start Over / Resend</button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Prevent double submission -->
+    <script>
+        document.getElementById('verifyForm').addEventListener('submit', function() {
+            const btn = document.getElementById('verifyBtn');
+            btn.disabled = true;
+            btn.textContent = 'Verifying...';
+            btn.style.opacity = '0.7';
+        });
+    </script>
+</body>
+</html>

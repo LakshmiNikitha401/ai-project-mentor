@@ -1,1 +1,83 @@
+{% extends "base_app.html" %}
 
+{% block title %}Project Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-text">
+        <span class="eyebrow">PROJECT ANALYZER</span>
+        <h1>Upgrade your previous work.</h1>
+        <p>Upload a past project report or code file. Our AI will suggest how to expand it into a major project.</p>
+    </div>
+</div>
+
+{% if not analysis %}
+<!-- Upload Form -->
+<div class="dash-card" style="max-width: 600px; margin: 0 auto;">
+    <form method="POST" action="/analyzer/upload" enctype="multipart/form-data">
+        <div class="form-group">
+            <label>What is your goal?</label>
+            <select name="goal" style="width: 100%; padding: 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 16px;">
+                <option value="expand">Expand my previous Minor project into a Major project</option>
+                <option value="pivot">Differentiate from a friend's project</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>Upload Project File (PDF, DOCX, TXT)</label>
+            <input type="file" name="project_file" accept=".pdf,.docx,.txt" required style="background: var(--bg); border: 1px dashed var(--accent); padding: 24px; width: 100%; border-radius: 8px; cursor: pointer;">
+        </div>
+        
+        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 16px;">Analyze Project</button>
+    </form>
+</div>
+
+{% else %}
+<!-- Analysis Results -->
+<div class="dash-card" style="margin-bottom: 32px; border-color: var(--accent);">
+    <div class="card-header">
+        <h3>Current Project Summary</h3>
+    </div>
+    <p style="font-size: 15px; color: var(--text); line-height: 1.6;">{{ analysis.summary }}</p>
+</div>
+
+<h3 style="font-family: var(--font-serif); font-size: 24px; margin-bottom: 24px;">Suggested Upgrade Paths</h3>
+
+<div style="display: flex; flex-direction: column; gap: 24px;">
+    {% for idea in analysis.ideas %}
+    <div class="project-card" style="padding: 20px;">
+        <div class="project-main">
+            <div class="project-badges" style="margin-bottom: 10px;">
+                <span class="badge domain">{{ idea.domain.split(',')[0] }}</span>
+            </div>
+            <h2 class="project-title" style="font-size: 18px; margin-bottom: 6px;">{{ idea.title }}</h2>
+            <p class="project-desc" style="font-size: 13px; margin-bottom: 12px;">{{ idea.description }}</p>
+            
+            <div style="background: var(--bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); display: block; margin-bottom: 8px;">New Roadmap:</span>
+                <ul style="list-style: none; padding: 0; margin: 0;">
+                    {% for step in idea.roadmap %}
+                    <li style="margin-bottom: 6px; font-size: 12px; display: flex; gap: 8px;">
+                        <i data-lucide="check-circle" style="width: 14px; height: 14px; color: var(--accent);"></i>
+                        <span>{{ step.title }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        
+        <div class="project-side" style="width: 180px;">
+            <div class="project-actions" style="display: flex; flex-direction: column; gap: 8px;">
+                <a href="/analyzer/generate/{{ loop.index0 }}" class="btn-primary" style="text-decoration: none; text-align: center; padding: 8px; font-size: 13px; width: 100%;">Start Project</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div style="text-align: center; margin-top: 32px;">
+    <a href="/analyzer" class="btn-secondary" style="text-decoration: none;">Analyze Another File</a>
+</div>
+{% endif %}
+
+{% endblock %}

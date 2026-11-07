@@ -1,0 +1,180 @@
+{% extends "base_app.html" %}
+
+{% block title %}{{ project.title }} - Workspace{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px;">
+    <div class="header-text">
+        <span class="eyebrow">WORKSPACE</span>
+        <h1>{{ project.title }}</h1>
+        <p>Track your progress and complete the roadmap.</p>
+    </div>
+    <div style="text-align: right;">
+        <span class="badge {{ project.difficulty|lower }}">{{ project.difficulty }}</span>
+        <div style="margin-top: 8px; font-size: 24px; font-weight: 700; font-family: var(--font-serif); color: var(--accent);">
+            {{ project.progress_pct }}%
+        </div>
+        <span style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase;">Completed</span>
+    </div>
+</div>
+
+<div class="dashboard-grid" style="grid-template-columns: 2fr 1fr;">
+    
+    <!-- Left Column: The Timeline -->
+    <div>
+        <div class="dash-card" style="padding: 32px;">
+            <h3 style="font-family: var(--font-serif); font-size: 22px; margin-bottom: 24px;">Project Roadmap</h3>
+            
+            <div class="timeline-container">
+                {% for task in tasks %}
+                <div class="timeline-node {% if task.status == 'completed' %}completed{% elif task.status == 'ready' %}active{% else %}locked{% endif %}">
+                    
+                    {% if not loop.last %}<div class="timeline-line"></div>{% endif %}
+                    
+                    <div class="timeline-dot">
+                        {% if task.status == 'completed' %}
+                            <i data-lucide="check" style="width: 16px;"></i>
+                        {% elif task.status == 'locked' %}
+                            <i data-lucide="lock" style="width: 14px;"></i>
+                        {% else %}
+                            <div class="pulse-dot"></div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="timeline-content">
+                        <details {% if task.status == 'ready' %}open{% endif %}>
+                            <summary>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <h4>{{ task.title }}</h4>
+                                    <i data-lucide="chevron-down" class="chevron-icon"></i>
+                                </div>
+                            </summary>
+                            
+                            <div class="details-inner">
+                                <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin-bottom: 16px; margin-top: 12px;">
+                                    {{ task.description }}
+                                </p>
+                                
+                                {% if task.sub_tasks and task.sub_tasks|length > 0 %}
+                                <div style="background: var(--bg); padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
+                                    <span style="font-size: 11px; text-transform: uppercase; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: block;">Action Items:</span>
+                                    <ul style="list-style: none; padding: 0; margin: 0;">
+                                        {% for sub in task.sub_tasks %}
+                                        <li style="font-size: 13px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px;">
+                                            <i data-lucide="square" style="width: 14px; height: 14px; margin-top: 2px; color: var(--text-secondary); flex-shrink: 0;"></i> 
+                                            <span>{{ sub }}</span>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                                
+                                {% if task.status == 'ready' %}
+                                <form method="POST" action="/tasks/{{ task.id }}/complete">
+                                    <button type="submit" class="btn-primary" style="padding: 10px 20px; font-size: 14px;">Mark as Complete</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </details>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Details -->
+    <div>
+        <div class="dash-card">
+            <h3 style="font-family: var(--font-serif); font-size: 18px; margin-bottom: 16px;">Project Info</h3>
+            
+            <div style="margin-bottom: 16px;">
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Domain</span>
+                <p style="font-size: 13px; margin-top: 4px;">{{ project.domain }}</p>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Description</span>
+                <p style="font-size: 13px; margin-top: 4px; color: var(--text-secondary);">{{ project.description }}</p>
+            </div>
+            
+            <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 12px;">
+                
+                <!-- DOWNLOAD PROPOSAL BUTTON -->
+                <a href="/workspace/{{ project.id }}/download_pdf" class="btn-primary" style="width: 100%; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-weight: 600;">
+                    <i data-lucide="download" style="width: 18px; height: 18px;"></i> Download Proposal PDF
+                </a>
+
+                <a href="/mentor?context={{ project.id }}&return_to=/workspace/{{ project.id }}" class="btn-secondary" style="width: 100%; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i data-lucide="message-square" style="width: 16px; height: 16px;"></i> Ask Mentor
+                </a>
+
+                <button onclick="document.getElementById('proposeModal').style.display='flex'" class="btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i data-lucide="lightbulb" style="width: 16px; height: 16px;"></i> Propose New Feature
+                </button>
+
+                <!-- Delete Project Button -->
+                <form method="POST" action="/projects/{{ project.id }}/delete" onsubmit="return confirm('Are you sure you want to delete this project? This action cannot be undone.');" style="margin: 0;">
+                    <button type="submit" class="btn-secondary" style="width: 100%; color: var(--color-error); border-color: var(--color-error); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Remove Project
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Propose Feature Modal -->
+<div id="proposeModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: var(--surface); padding: 32px; border-radius: 12px; width: 90%; max-width: 500px; border: 1px solid var(--border);">
+        <h2 style="font-family: var(--font-serif); margin-bottom: 16px;">Propose a New Feature</h2>
+        <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Describe a new idea or feature you want to add to this project. The AI will check if it fits and update your roadmap.</p>
+        
+        <form method="POST" action="/workspace/{{ project.id }}/propose">
+            <textarea name="idea_text" rows="4" placeholder="E.g., Add a dashboard to visualize the prediction results using Streamlit..." style="width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 12px; border-radius: 6px; font-family: var(--font-sans); margin-bottom: 24px;" required></textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button type="button" onclick="document.getElementById('proposeModal').style.display='none'" class="btn-secondary">Cancel</button>
+                <button type="submit" class="btn-primary">Evaluate & Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    /* Timeline CSS */
+    .timeline-container { position: relative; padding-left: 20px; }
+    .timeline-node { position: relative; padding-bottom: 24px; padding-left: 32px; }
+    .timeline-line { position: absolute; left: 11px; top: 24px; bottom: 0; width: 2px; background: var(--border); z-index: 0; }
+    .timeline-node.completed .timeline-line { background: var(--accent); }
+    .timeline-dot { position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; background: var(--surface); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; z-index: 1; }
+    .timeline-node.completed .timeline-dot { background: var(--accent); border-color: var(--accent); color: white; }
+    .timeline-node.active .timeline-dot { border-color: var(--accent); }
+    .timeline-node.locked .timeline-dot { background: var(--bg); border-color: var(--border); color: var(--text-secondary); }
+    
+    .pulse-dot { width: 10px; height: 10px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 0 0 rgba(45, 122, 99, 0.7); animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(45, 122, 99, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(45, 122, 99, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(45, 122, 99, 0); } }
+    
+    .timeline-content { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-top: 4px; }
+    .timeline-node.active .timeline-content { border-color: var(--accent); box-shadow: 0 4px 12px rgba(45, 122, 99, 0.1); }
+    .timeline-node.locked .timeline-content { opacity: 0.6; }
+    .timeline-node.locked details { pointer-events: none; }
+
+    /* Accordion CSS */
+    details { cursor: pointer; }
+    summary { list-style: none; outline: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary h4 { font-family: var(--font-sans); font-size: 16px; font-weight: 600; margin: 0; }
+    
+    .chevron-icon { transition: transform 0.3s ease; color: var(--text-secondary); }
+    details[open] .chevron-icon { transform: rotate(180deg); }
+    
+    details > .details-inner {
+        overflow: hidden;
+        animation: slideDown 0.3s ease-out;
+    }
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+{% endblock %}

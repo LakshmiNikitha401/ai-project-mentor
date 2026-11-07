@@ -1,0 +1,174 @@
+{% extends "base_app.html" %}
+
+{% block title %}Reminders{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-text">
+        <span class="eyebrow">ACCOUNT</span>
+        <h1>Reminders</h1>
+        <p>Stay on track with your project milestones.</p>
+    </div>
+</div>
+
+<div class="dashboard-grid" style="grid-template-columns: 1fr 2fr; gap: 24px;">
+    
+    <!-- Left Column: Add Reminder Form -->
+    <div>
+        <div class="dash-card">
+            <div class="card-header">
+                <h3>Add New Reminder</h3>
+            </div>
+            <form method="POST" action="/reminders/add">
+                <div class="form-group">
+                    <label for="title">What do you need to do?</label>
+                    <input type="text" id="title" name="title" placeholder="e.g., Finish literature review" required>
+                </div>
+                <div class="form-group">
+                    <label for="due_date">Target Date</label>
+                    <input type="date" id="due_date" name="due_date" required style="width: 100%; padding: 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%;">Save Reminder</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Column: List of Reminders -->
+    <div>
+        <div class="dash-card" style="min-height: 400px;">
+            <div class="card-header">
+                <h3>Your Schedule</h3>
+            </div>
+            
+            {% if grouped_reminders %}
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    
+                    {% for project_name, reminders in grouped_reminders.items() %}
+                    
+                    <!-- Accordion Dropdown -->
+                    <details class="reminder-accordion" open>
+                        <summary class="reminder-summary">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <i data-lucide="folder" style="width: 20px; height: 20px; color: var(--accent);"></i>
+                                <span style="font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--text);">{{ project_name }}</span>
+                            </div>
+                            <i data-lucide="chevron-down" class="accordion-icon" style="width: 20px; height: 20px; color: var(--text-secondary);"></i>
+                        </summary>
+                        
+                        <div class="reminder-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px;">
+                            {% for reminder in reminders %}
+                            
+                            {% set is_completed = reminder.status == 'completed' %}
+                            
+                            <div class="reminder-item {% if is_completed %}reminder-completed{% endif %}">
+                                <div style="flex: 1;">
+                                    <h4 class="reminder-title">{{ reminder.title }}</h4>
+                                    <span class="reminder-date">
+                                        <i data-lucide="calendar" style="width: 14px; height: 14px; display: inline-block; vertical-align: text-bottom; margin-right: 4px;"></i>
+                                        {{ reminder.formatted_date }}
+                                    </span>
+                                </div>
+                                
+                                <form method="POST" action="/reminders/delete/{{ reminder.id }}" style="margin-left: 16px;">
+                                    <button type="submit" class="icon-btn" style="color: #ff6b6b; border: 1px solid var(--border);" title="Delete reminder">
+                                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                                    </button>
+                                </form>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </details>
+                    {% endfor %}
+                    
+                </div>
+            {% else %}
+                <div class="empty-state" style="border: none; padding: 48px;">
+                    <i data-lucide="calendar" style="width: 48px; height: 48px; color: var(--text-secondary); margin-bottom: 16px;"></i>
+                    <h3>No reminders yet</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 24px;">Add your first deadline using the form on the left, or start a project roadmap to auto-generate timeline reminders.</p>
+                    <a href="/discover" class="btn-secondary" style="text-decoration: none;">Start a Project</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Accordion Styles */
+    .reminder-accordion {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        overflow: hidden;
+    }
+
+    .reminder-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        cursor: pointer;
+        list-style: none; /* Hide default triangle */
+        background: rgba(255, 255, 255, 0.02);
+        transition: background 0.2s;
+    }
+
+    .reminder-summary:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Remove default arrow in some browsers */
+    .reminder-summary::-webkit-details-marker {
+        display: none;
+    }
+
+    /* Rotate icon when open */
+    .reminder-accordion[open] .accordion-icon {
+        transform: rotate(180deg);
+    }
+    .accordion-icon {
+        transition: transform 0.2s ease;
+    }
+
+    /* Reminder Items */
+    .reminder-list {
+        padding: 0 20px 20px 20px;
+    }
+
+    .reminder-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+    }
+
+    .reminder-title {
+        font-family: var(--font-sans);
+        font-size: 14px;
+        margin-bottom: 6px;
+        color: var(--text);
+    }
+
+    .reminder-date {
+        font-size: 13px;
+        color: var(--accent);
+        font-weight: 500;
+    }
+
+    /* Completed State */
+    .reminder-completed {
+        opacity: 0.5;
+    }
+
+    .reminder-completed .reminder-title {
+        text-decoration: line-through;
+    }
+
+    .reminder-completed .reminder-date {
+        color: var(--text-secondary);
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,461 @@
+{% extends "base_app.html" %}
+
+{% block title %}Discover Projects{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-text">
+        <span class="eyebrow">PROJECT DISCOVERY</span>
+        <h1>Find the right project.</h1>
+        <p>Search by domain, skills, or a natural language idea.</p>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- STATE 1: THE WIZARD (Shows on fresh visit)   -->
+<!-- ============================================ -->
+{% if show_wizard %}
+<div id="wizard-container" class="dash-card" style="max-width: 700px; margin: 0 auto 48px auto; padding: 40px; text-align: center;">
+    
+    <div style="display: flex; justify-content: center; gap: 8px; margin-bottom: 32px;">
+        <div class="wizard-dot active" id="dot-1"></div>
+        <div class="wizard-dot" id="dot-2"></div>
+        <div class="wizard-dot" id="dot-3"></div>
+    </div>
+
+    <!-- Step 1: Duration -->
+    <div id="step-1" class="wizard-step">
+        <h2 style="font-family: var(--font-serif); font-size: 26px; margin-bottom: 8px;">How much time do you have?</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 32px;">This helps us recommend projects that you can actually finish.</p>
+        <div class="wizard-options">
+            <button onclick="selectDuration(2)" class="wizard-btn">2 Weeks</button>
+            <button onclick="selectDuration(4)" class="wizard-btn">4 Weeks</button>
+            <button onclick="selectDuration(8)" class="wizard-btn">8 Weeks</button>
+            <button onclick="selectDuration(12)" class="wizard-btn">12+ Weeks</button>
+        </div>
+    </div>
+
+    <!-- Step 2: Difficulty -->
+    <div id="step-2" class="wizard-step" style="display: none;">
+        <h2 style="font-family: var(--font-serif); font-size: 26px; margin-bottom: 8px;">What difficulty level do you want?</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 32px;">Be honest—you can always choose an advanced project later.</p>
+        <div class="wizard-options">
+            <button onclick="selectDifficulty('Beginner')" class="wizard-btn">Beginner</button>
+            <button onclick="selectDifficulty('Intermediate')" class="wizard-btn">Intermediate</button>
+            <button onclick="selectDifficulty('Advanced')" class="wizard-btn">Advanced</button>
+        </div>
+    </div>
+
+    <!-- Step 3: Path -->
+    <div id="step-3" class="wizard-step" style="display: none;">
+        <h2 style="font-family: var(--font-serif); font-size: 26px; margin-bottom: 8px;">How do you want to find it?</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 32px;">We've filtered the projects to match your constraints.</p>
+        <div class="wizard-options" style="flex-direction: column; gap: 16px; max-width: 400px; margin: 0 auto;">
+            <button onclick="finishWizard('search')" class="wizard-btn large">
+                <i data-lucide="search"></i> Search the Catalogue
+            </button>
+            <button onclick="finishWizard('explore')" class="wizard-btn large">
+                <i data-lucide="compass"></i> Explore Domains
+            </button>
+            <button onclick="window.location.href='/projects/custom/start'" class="wizard-btn large">
+                <i data-lucide="sparkles"></i> Brainstorm My Own Idea
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ============================================ -->
+<!-- STATE 2: EXPLORE DOMAINS                     -->
+<!-- ============================================ -->
+{% if wizard_mode == "explore" %}
+<div style="margin-top: 32px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div>
+            <h2 style="font-family: var(--font-serif); font-size: 24px;">Explore by Domain</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">
+                We will only show projects that fit your wizard choices: 
+                <strong>{{ w_duration }} Weeks, {{ w_difficulty }}</strong>.
+            </p>
+        </div>
+        <a href="/discover" class="btn-secondary" style="padding: 8px 16px; font-size: 13px;">Start Over</a>
+    </div>
+    
+    <div class="domain-grid">
+        {% for d in explore_domains %}
+        <a href="/discover?wizard=search&domain={{ d.name }}&duration={{ w_duration }}&difficulty={{ w_difficulty }}" class="domain-card" onclick="showLoading()">
+            <div class="domain-icon"><i data-lucide="{{ d.icon }}"></i></div>
+            <h3 class="domain-title">{{ d.name }}</h3>
+            <p class="domain-desc">{{ d.desc }}</p>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ============================================ -->
+<!-- STATE 3: SEARCH & RESULTS                    -->
+<!-- ============================================ -->
+{% if wizard_mode == "search" or (query and not show_wizard) %}
+
+    <!-- Wizard Summary Banner -->
+    {% if wizard_mode %}
+    <div class="dash-card" style="margin-bottom: 24px; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-color: var(--accent);">
+        <div>
+            <span style="font-size: 12px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Filters Applied</span>
+            <div style="font-size: 14px; margin-top: 4px; font-weight: 500;">
+                {% if selected_domain != "All" %}
+                <i data-lucide="layers" style="width: 14px; display: inline-block; vertical-align: text-bottom;"></i> {{ selected_domain }} &nbsp;•&nbsp;
+                {% endif %}
+                <i data-lucide="clock" style="width: 14px; display: inline-block; vertical-align: text-bottom;"></i> {{ w_duration }} Weeks &nbsp;•&nbsp;
+                <i data-lucide="bar-chart" style="width: 14px; display: inline-block; vertical-align: text-bottom;"></i> {{ w_difficulty }}
+            </div>
+        </div>
+        <a href="/discover" class="btn-secondary" style="padding: 8px 16px; font-size: 13px;">Start Over</a>
+    </div>
+    {% endif %}
+
+    <!-- Search Bar -->
+    {% if query or selected_domain == "All" %}
+    <form method="GET" action="/discover" class="search-form" style="margin-bottom: 32px;" onsubmit="showLoading()">
+        <input type="hidden" name="wizard" value="search">
+        <input type="hidden" name="duration" value="{{ w_duration }}">
+        <input type="hidden" name="difficulty" value="{{ w_difficulty }}">
+        {% if selected_domain != "All" %}
+        <input type="hidden" name="domain" value="{{ selected_domain }}">
+        {% endif %}
+        
+        <div class="search-bar-container">
+            <i data-lucide="search" class="search-icon"></i>
+            <input type="text" name="q" value="{{ query }}" placeholder="Find a beginner-friendly NLP project I can finish in eight weeks..." class="search-input">
+            <button type="submit" class="btn-primary">Search</button>
+        </div>
+    </form>
+    {% endif %}
+
+    <!-- Results Area -->
+    {% if query or selected_domain != "All" %}
+        <div class="results-container">
+            
+            <!-- HEADER -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+                <div>
+                    {% if query %}
+                        <h2 style="font-family: var(--font-serif); font-size: 20px; margin: 0;">Search Results</h2>
+                        <p style="color: var(--text-secondary); font-size: 14px; margin-top: 4px;">Showing results for "{{ query }}"</p>
+                    {% else %}
+                        <h2 style="font-family: var(--font-serif); font-size: 20px; margin: 0;">{{ selected_domain }} Projects</h2>
+                    {% endif %}
+                </div>
+                {% if selected_domain != "All" %}
+                    <a href="/discover?wizard=explore&duration={{ w_duration }}&difficulty={{ w_difficulty }}" class="btn-secondary" style="padding: 8px 16px; font-size: 13px;">Back to Domains</a>
+                {% else %}
+                    <a href="/discover?wizard=search&duration={{ w_duration }}&difficulty={{ w_difficulty }}" class="btn-secondary" style="padding: 8px 16px; font-size: 13px;">Clear Search</a>
+                {% endif %}
+            </div>
+
+            {% if results %}
+                <!-- EXACT MATCHES -->
+                {% for project in results %}
+                <div class="project-card" style="margin-bottom: 16px; padding: 20px;">
+                    <div class="project-main">
+                        <!-- Top Row Badges -->
+                        <div class="project-badges" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <span class="badge domain">{{ project.domain.split(',')[0] }}</span>
+                            <span class="badge difficulty {{ project.difficulty|lower }}">{{ project.difficulty }}</span>
+                            <span class="badge domain">{{ project.duration_weeks }} Weeks</span>
+                            
+                            <!-- Feasibility Badge -->
+                            <span class="badge-feasibility badge-{{ project.feasibility|lower }}">
+                                <i data-lucide="activity" style="width: 12px; display: inline; vertical-align: text-bottom;"></i> {{ project.feasibility }} Feasibility
+                            </span>
+                            
+                            <!-- Novelty Badge -->
+                            <span class="badge-novelty">
+                                <i data-lucide="star" style="width: 12px; display: inline; vertical-align: text-bottom;"></i> Novelty: {{ project.novelty }}
+                            </span>
+                        </div>
+                        
+                        <h2 class="project-title" style="font-size: 18px; margin-bottom: 6px;">{{ project.title }}</h2>
+                        <p class="project-desc" style="font-size: 13px; margin-bottom: 12px;">{{ project.description }}</p>
+                        
+                        <div class="project-skills" style="font-size: 12px; margin-bottom: 0;">
+                            <strong>Skills:</strong> {{ project.skills | join(', ') if project.skills else 'Python' }}
+                        </div>
+                        
+                        <!-- The "Why" Badge -->
+                        {% if project.why_reason %}
+                        <div style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; background: rgba(45, 122, 99, 0.1); border: 1px dashed rgba(45, 122, 99, 0.4); padding: 8px 12px; border-radius: 6px;">
+                            <i data-lucide="sparkles" style="width: 14px; height: 14px; color: var(--accent);"></i>
+                            <span style="font-size: 13px; color: var(--accent); font-weight: 500;">{{ project.why_reason }}</span>
+                        </div>
+                        {% endif %}
+                        
+                    </div>
+                    
+                    <div class="project-side" style="width: 180px; border-left: 1px solid var(--border); padding-left: 20px;">
+                        <!-- Match Score Circle -->
+                        <div style="text-align: right; margin-bottom: 16px;">
+                            <span style="font-size: 32px; font-weight: 700; font-family: var(--font-serif); color: var(--accent);">{{ project.match_score }}%</span>
+                            <p style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; letter-spacing: 0.5px;">Match Score</p>
+                        </div>
+                        
+                        <div class="project-actions" style="display: flex; flex-direction: column; gap: 8px;">
+                            <a href="/projects/{{ project.id }}" class="btn-secondary" style="text-decoration: none; text-align: center; padding: 8px; font-size: 13px; width: 100%;">View Details</a>
+                            <button onclick="openStartModal('{{ project.id }}', '{{ project.title }}')" class="btn-primary" style="width: 100%; padding: 8px; font-size: 13px;">Start Project</button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                <!-- PAGINATION CONTROLS -->
+                {% if total_pages > 1 %}
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border);">
+                    {% if page > 1 %}
+                        <a href="/discover?q={{ query }}&domain={{ selected_domain }}&page={{ page - 1 }}&wizard={{ wizard_mode }}&duration={{ w_duration }}&difficulty={{ w_difficulty }}" class="btn-secondary" onclick="showLoading()">
+                            <i data-lucide="chevron-left" style="width: 16px; display: inline; vertical-align: text-bottom;"></i> Previous
+                        </a>
+                    {% else %}
+                        <button class="btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">
+                            <i data-lucide="chevron-left" style="width: 16px; display: inline; vertical-align: text-bottom;"></i> Previous
+                        </button>
+                    {% endif %}
+                    
+                    <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">
+                        Page {{ page }} of {{ total_pages }}
+                    </span>
+                    
+                    {% if page < total_pages %}
+                        <a href="/discover?q={{ query }}&domain={{ selected_domain }}&page={{ page + 1 }}&wizard={{ wizard_mode }}&duration={{ w_duration }}&difficulty={{ w_difficulty }}" class="btn-primary" onclick="showLoading()">
+                            Next <i data-lucide="chevron-right" style="width: 16px; display: inline; vertical-align: text-bottom;"></i>
+                        </a>
+                    {% else %}
+                        <button class="btn-primary" disabled style="opacity: 0.5; cursor: not-allowed;">
+                            Next <i data-lucide="chevron-right" style="width: 16px; display: inline; vertical-align: text-bottom;"></i>
+                        </button>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+            {% else %}
+                <!-- FALLBACK: NO EXACT MATCHES FOUND -->
+                <div style="background: rgba(45, 122, 99, 0.1); border: 1px solid var(--accent); border-radius: 8px; padding: 24px; margin-bottom: 32px; text-align: center;">
+                    <i data-lucide="search-x" style="width: 32px; height: 32px; color: var(--accent); margin-bottom: 12px;"></i>
+                    <h3 style="font-family: var(--font-serif); font-size: 20px; color: var(--text); margin-bottom: 8px;">We couldn't find an exact match for "{{ query }}"</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; max-width: 600px; margin: 0 auto;">
+                        Based on your skills, time availability ({{ w_duration }} Weeks), and the keywords you typed, here are similar projects you might like.
+                    </p>
+                </div>
+                
+                <!-- FALLBACK RESULTS -->
+                {% for project in fallback_results %}
+                <div class="project-card" style="margin-bottom: 16px; padding: 20px; border-left: 3px solid var(--accent);">
+                    <div class="project-main">
+                        <div class="project-badges" style="margin-bottom: 10px;">
+                            <span class="badge domain">{{ project.domain.split(',')[0] }}</span>
+                            <span class="badge difficulty {{ project.difficulty|lower }}">{{ project.difficulty }}</span>
+                            <span class="badge domain">{{ project.duration_weeks }} Weeks</span>
+                        </div>
+                        <h2 class="project-title" style="font-size: 18px; margin-bottom: 6px;">{{ project.title }}</h2>
+                        <p class="project-desc" style="font-size: 13px; margin-bottom: 12px;">{{ project.description }}</p>
+                        <div class="project-skills" style="font-size: 12px; margin-bottom: 0;">
+                            <strong>Skills:</strong> {{ project.skills | join(', ') if project.skills else 'Python' }}
+                        </div>
+                        
+                        {% if project.why_reason %}
+                        <div style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; background: rgba(45, 122, 99, 0.1); border: 1px dashed rgba(45, 122, 99, 0.4); padding: 8px 12px; border-radius: 6px;">
+                            <i data-lucide="sparkles" style="width: 14px; height: 14px; color: var(--accent);"></i>
+                            <span style="font-size: 13px; color: var(--accent); font-weight: 500;">{{ project.why_reason }}</span>
+                        </div>
+                        {% endif %}
+                        
+                    </div>
+                    <div class="project-side" style="width: 180px;">
+                        <div class="project-actions" style="display: flex; flex-direction: column; gap: 8px;">
+                            <a href="/projects/{{ project.id }}" class="btn-secondary" style="text-decoration: none; text-align: center; padding: 8px; font-size: 13px; width: 100%;">View Details</a>
+                            <button onclick="openStartModal('{{ project.id }}', '{{ project.title }}')" class="btn-primary" style="width: 100%; padding: 8px; font-size: 13px;">Start Project</button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    {% else %}
+        <!-- TRENDING IDEAS (Default state) -->
+        <div style="margin-bottom: 32px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="font-family: var(--font-serif); font-size: 24px;">Trending Ideas</h2>
+                <button onclick="refreshTrending()" class="icon-btn" title="Shuffle" style="border: 1px solid var(--border);">
+                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Click a chip to search, or watch new ideas appear.</p>
+            
+            <div id="trending-grid" class="ideas-grid">
+                <div style="display: flex; gap: 8px; align-items: center; color: var(--text-secondary); font-size: 14px;">
+                    <i data-lucide="loader" class="spin" style="width: 16px; height: 16px;"></i> Loading trending ideas...
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endif %}
+
+<!-- START PROJECT MODAL -->
+<div id="startProjectModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: var(--surface); padding: 32px; border-radius: 12px; width: 90%; max-width: 500px; border: 1px solid var(--border);">
+        <h2 style="font-family: var(--font-serif); margin-bottom: 8px;">Start Project</h2>
+        <p id="modalProjectTitle" style="color: var(--accent); font-weight: 600; margin-bottom: 24px;"></p>
+        <form method="POST" id="startProjectForm" action="" onsubmit="showLoading()">
+            <div class="form-group">
+                <label>How many weeks do you have?</label>
+                <select name="duration_weeks" style="width:100%; padding:10px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px;" required>
+                    <option value="4">4 Weeks (1 Month)</option>
+                    <option value="8">8 Weeks (2 Months)</option>
+                    <option value="12">12 Weeks (3 Months)</option>
+                    <option value="16">16 Weeks (4 Months)</option>
+                </select>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                <button type="button" onclick="document.getElementById('startProjectModal').style.display='none'" class="btn-secondary">Cancel</button>
+                <button type="submit" class="btn-primary">Generate Roadmap & Start</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 17, 21, 0.9); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+    <div class="spinner"></div>
+    <h2 style="font-family: var(--font-serif); font-size: 24px; color: var(--text); margin-top: 24px;">Analyzing your request...</h2>
+    <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px;">Comparing semantic meaning, skills, and feasibility.</p>
+</div>
+
+<style>
+    .wizard-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); transition: all 0.3s ease; }
+    .wizard-dot.active { background: var(--accent); transform: scale(1.2); }
+    .wizard-options { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .wizard-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 16px 24px; border-radius: 8px; font-size: 16px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .wizard-btn:hover { border-color: var(--accent); background: rgba(45, 122, 99, 0.05); color: var(--accent); }
+    .wizard-btn.large { padding: 20px; font-size: 18px; width: 100%; }
+    
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+
+    /* --- NEW FEASIBILITY & NOVELTY BADGES --- */
+    .badge-feasibility {
+        font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px;
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+    .badge-high {
+        background: rgba(45, 122, 99, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(52, 211, 153, 0.3);
+    }
+    .badge-medium {
+        background: rgba(234, 179, 8, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+    .badge-low {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+    
+    .badge-novelty {
+        font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px;
+        background: rgba(255,255,255,0.08); color: var(--text-secondary); 
+        border: 1px solid var(--border);
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+
+    /* --- LOADING SPINNER --- */
+    .spinner {
+        width: 60px;
+        height: 60px;
+        border: 4px solid var(--border);
+        border-top: 4px solid var(--accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+</style>
+
+<script>
+    // --- LOADING OVERLAY ---
+    function showLoading() {
+        document.getElementById('loading-overlay').style.display = 'flex';
+    }
+
+    // WIZARD LOGIC
+    let wizardData = { duration: null, difficulty: null };
+
+    function advanceStep(step) {
+        document.querySelectorAll('.wizard-step').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.wizard-dot').forEach(el => el.classList.remove('active'));
+        document.getElementById('step-' + step).style.display = 'block';
+        for(let i=1; i<=step; i++) { document.getElementById('dot-' + i).classList.add('active'); }
+    }
+
+    function selectDuration(val) { wizardData.duration = val; advanceStep(2); }
+    function selectDifficulty(val) { wizardData.difficulty = val; advanceStep(3); }
+
+    function finishWizard(path) {
+        showLoading();
+        setTimeout(() => {
+            if (path === 'search') {
+                window.location.href = `/discover?wizard=search&duration=${wizardData.duration}&difficulty=${wizardData.difficulty}`;
+            } else if (path === 'explore') {
+                window.location.href = `/discover?wizard=explore&duration=${wizardData.duration}&difficulty=${wizardData.difficulty}`;
+            }
+        }, 100); // Small delay to let the loading screen render
+    }
+
+    // TRENDING IDEAS LOGIC
+    async function fetchTrending() {
+        try {
+            const res = await fetch('/api/trending-ideas');
+            const data = await res.json();
+            const grid = document.getElementById('trending-grid');
+            
+            if (!grid) return; 
+            grid.innerHTML = '';
+            
+            data.ideas.forEach(idea => {
+                const btn = document.createElement('button');
+                btn.className = 'idea-chip';
+                btn.innerHTML = `<i data-lucide="hash" style="width:14px;"></i> ${idea}`;
+                btn.onclick = () => {
+                    showLoading();
+                    const w_dur = new URLSearchParams(window.location.search).get('duration') || '';
+                    const w_diff = new URLSearchParams(window.location.search).get('difficulty') || '';
+                    setTimeout(() => {
+                        window.location.href = `/discover?wizard=search&duration=${w_dur}&difficulty=${w_diff}&q=${encodeURIComponent(idea)}`;
+                    }, 100);
+                };
+                grid.appendChild(btn);
+            });
+            lucide.createIcons();
+        } catch (e) {
+            console.error("Failed to load trending", e);
+        }
+    }
+
+    function refreshTrending() {
+        const grid = document.getElementById('trending-grid');
+        if(grid) grid.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px;">Shuffling...</div>';
+        fetchTrending();
+    }
+
+    // Initialize Trending if on the search page
+    if (document.getElementById('trending-grid')) {
+        fetchTrending();
+        setInterval(fetchTrending, 40000);
+    }
+
+    function openStartModal(projectId, projectTitle) {
+        document.getElementById('modalProjectTitle').innerText = projectTitle;
+        document.getElementById('startProjectForm').action = `/projects/${projectId}/start`;
+        document.getElementById('startProjectModal').style.display = 'flex';
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,205 @@
+{% extends "base_app.html" %}
+
+{% block title %}AI Mentor{% endblock %}
+
+{% block content %}
+<style>
+    /* Force full-screen layout */
+    .sidebar, .topbar { display: none !important; }
+    .app-body { display: block !important; }
+    .app-main { width: 100vw !important; height: 100vh; overflow: hidden; }
+    .page-content { padding: 0 !important; max-width: 100% !important; }
+
+    .mentor-layout { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+    
+    /* Left Sidebar */
+    .mentor-sidebar { 
+        width: 300px; 
+        background-color: var(--surface); 
+        border-right: 1px solid var(--border); 
+        display: flex; 
+        flex-direction: column; 
+        padding: 24px; 
+    }
+    
+    .mentor-sidebar h3 { 
+        font-size: 11px; 
+        text-transform: uppercase; 
+        color: var(--text-secondary); 
+        margin-bottom: 12px; 
+        letter-spacing: 0.5px;
+        font-weight: 600;
+    }
+    
+    /* Sidebar Links */
+    .history-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        color: var(--text-secondary) !important;
+        text-decoration: none !important;
+        font-size: 14px;
+        border-radius: 6px;
+        margin-bottom: 4px;
+        transition: all 0.15s ease;
+    }
+    
+    .history-item:hover {
+        background-color: var(--bg);
+        color: var(--text) !important;
+    }
+    
+    .history-item.active {
+        background-color: var(--bg);
+        color: var(--accent) !important;
+        font-weight: 500;
+    }
+
+    /* Right Panel */
+    .mentor-chat-area { flex: 1; display: flex; flex-direction: column; background-color: var(--bg); position: relative; }
+    .chat-header { padding: 16px 40px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 40px; display: flex; flex-direction: column; gap: 32px; max-width: 1000px; margin: 0 auto; width: 100%; }
+    
+    /* Suggested Prompts (Empty State) */
+    .empty-state-container { text-align: center; margin-top: 10vh; }
+    .empty-state-container h2 { font-family: var(--font-serif); font-size: 32px; color: var(--text); margin-bottom: 32px; }
+    .prompt-chips { display: flex; flex-direction: column; gap: 12px; max-width: 600px; margin: 0 auto; text-align: left; }
+    
+    /* The new button-style chips */
+    .prompt-chip { 
+        background: var(--surface); 
+        border: 1px solid var(--border); 
+        padding: 16px 20px; 
+        border-radius: 8px; 
+        font-size: 15px; 
+        cursor: pointer; 
+        transition: all 0.2s ease; 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        color: var(--text); 
+        text-decoration: none !important;
+        width: 100%;
+        text-align: left;
+    }
+    .prompt-chip:hover { 
+        border-color: var(--accent); 
+        background: rgba(45, 122, 99, 0.05); 
+        color: var(--accent); 
+        transform: translateX(4px); 
+    }
+    
+    /* Chat Bubbles */
+    .chat-bubble-container { display: flex; gap: 20px; width: 100%; }
+    .chat-bubble-container.user { flex-direction: row-reverse; }
+    .chat-avatar-box { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .chat-avatar-box.ai { background: rgba(45, 122, 99, 0.1); color: var(--accent); }
+    .chat-avatar-box.user { background: var(--border); color: var(--text); }
+    .chat-bubble-text { padding: 20px 24px; border-radius: 12px; font-size: 15px; line-height: 1.7; }
+    .chat-bubble-text.ai { background-color: var(--surface); border: 1px solid var(--border); width: 100%; }
+    .chat-bubble-text.user { background-color: var(--accent); color: white; max-width: 70%; }
+    
+    /* Markdown inside chat */
+    .chat-bubble-text pre { background-color: #0d1117 !important; border: 1px solid #30363d; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 16px 0; }
+    .chat-bubble-text code { font-family: 'JetBrains Mono', monospace !important; font-size: 13px !important; color: #e6edf3 !important; }
+    .chat-bubble-text p { margin-bottom: 14px; }
+    .chat-bubble-text table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    .chat-bubble-text th, .chat-bubble-text td { border: 1px solid var(--border); padding: 10px 14px; }
+    .chat-bubble-text th { background: var(--bg); font-weight: 600; }
+    
+    /* Input Area */
+    .chat-input-area { padding: 24px 40px; border-top: 1px solid var(--border); background: var(--surface); }
+    .chat-input-form { max-width: 800px; margin: 0 auto; display: flex; gap: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+    .chat-input-form input { flex: 1; background: transparent; border: none; color: var(--text); padding: 12px; outline: none; font-size: 15px; }
+    .chat-input-form button { background: var(--accent); color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+</style>
+
+<div class="mentor-layout">
+    
+    <!-- Left Panel -->
+    <div class="mentor-sidebar">
+        <!-- Smart Back Button -->
+        <a href="{{ return_to }}" class="btn-secondary" style="display: flex; align-items: center; gap: 8px; text-decoration: none; margin-bottom: 24px;">
+            <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Back
+        </a>
+
+        <a href="/mentor/clear?context=General" class="btn-primary" style="text-align: center; text-decoration: none; margin-bottom: 24px;">+ New Chat</a>
+        
+        <h3>Your Projects</h3>
+        
+        <!-- General Chat -->
+        <a href="/mentor?context=General&return_to={{ return_to }}" class="history-item {% if context_id == 'General' %}active{% endif %}">
+            <i data-lucide="message-square" style="width: 14px; height: 14px;"></i> General Question
+        </a>
+        
+        <!-- Project Chats -->
+        {% for p in all_projects %}
+        <a href="/mentor?context={{ p.id }}&return_to={{ return_to }}" class="history-item {% if context_id|string == p.id|string %}active{% endif %}">
+            <i data-lucide="briefcase" style="width: 14px; height: 14px;"></i> {{ p.title[:22] }}...
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Right Panel -->
+    <div class="mentor-chat-area">
+        <div class="chat-header">
+            <h2 style="font-family: var(--font-sans); font-size: 16px; margin: 0; color: var(--text);">
+                Context: {{ context_title }}
+            </h2>
+        </div>
+
+        <div class="chat-messages" id="chat-box">
+            
+            {% if not chat_history %}
+            <!-- EMPTY STATE WITH SUGGESTED PROMPTS -->
+            <div class="empty-state-container">
+                <i data-lucide="bot" style="width: 56px; height: 56px; color: var(--accent); margin-bottom: 24px;"></i>
+                <h2>Where should we begin?</h2>
+                
+                <div class="prompt-chips">
+                    {% for prompt in suggested_prompts %}
+                    <!-- CHANGED: These are now forms that auto-submit -->
+                    <form method="POST" action="/mentor?context={{ context_id }}&return_to={{ return_to }}" style="margin: 0;">
+                        <input type="hidden" name="message" value="{{ prompt }}">
+                        <button type="submit" class="prompt-chip">
+                            <i data-lucide="arrow-up-right" style="width: 18px; height: 18px; color: var(--text-secondary);"></i>
+                            {{ prompt }}
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            {% for msg in chat_history %}
+                {% if msg.role == "user" %}
+                <div class="chat-bubble-container user">
+                    <div class="chat-avatar-box user"><i data-lucide="user"></i></div>
+                    <div class="chat-bubble-text user">{{ msg.content }}</div>
+                </div>
+                {% else %}
+                <div class="chat-bubble-container ai">
+                    <div class="chat-avatar-box ai"><i data-lucide="bot"></i></div>
+                    <div class="chat-bubble-text ai">{{ msg.content | safe }}</div>
+                </div>
+                {% endif %}
+            {% endfor %}
+            
+        </div>
+
+        <div class="chat-input-area">
+            <form method="POST" action="/mentor?context={{ context_id }}&return_to={{ return_to }}" class="chat-input-form">
+                <input type="text" name="message" id="chat-input" placeholder="Ask a question..." required autocomplete="off">
+                <button type="submit">Send</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const chatBox = document.getElementById('chat-box');
+    if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+    lucide.createIcons();
+</script>
+{% endblock %}
