@@ -2,6 +2,8 @@ import os
 import random
 import string
 import smtplib
+import json
+import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import psycopg2
@@ -10,31 +12,72 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 
+# Gmail API imports
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
 load_dotenv()
 db_url = os.environ.get("DATABASE_URL")
 mail_email = os.environ.get("MAIL_EMAIL")
 mail_password = os.environ.get("MAIL_PASSWORD")
+gmail_creds_json = os.environ.get("GMAIL_CREDENTIALS_JSON")
 
 def get_db():
     return psycopg2.connect(db_url)
 
+# ==========================================
+# EMAIL HELPER (Handles Local vs Render)
+# ==========================================
+def _send_email(to_email, subject, body_html):
+    # Check if we are running on Render (Render sets the RENDER env variable)
+    is_production = os.environ.get("RENDER") is not None
+    
+    if is_production and gmail_creds_json:
+        # --- PRODUCTION: Use Gmail API ---
+        try:
+            creds_info = json.loads(gmail_creds_json)
+            creds = Credentials.from_authorized_user_info(creds_info)
+            service = build('gmail', 'v1', credentials=creds)
+            
+            message = MIMEText(body_html, 'html')
+            message['to'] = to_email
+            message['from'] = mail_email
+            message['subject'] = subject
+            
+            raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+            service.users().messages().send(userId='me', body={'raw': raw}).execute()
+            print(f"✅ Email sent via Gmail API to {to_email}")
+            return True
+        except Exception as e:
+            print(f"❌ Gmail API Error: {e}")
+            return False
+    else:
+        # --- LOCAL: Use SMTP ---
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = f"AI Project Mentor <{mail_email}>"
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body_html, 'html'))
+            
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(mail_email, mail_password)
+            server.send_message(msg)
+            server.quit()
+            print(f"✅ Email sent via SMTP to {to_email}")
+            return True
+        except Exception as e:
+            print(f"❌ SMTP Error: {e}")
+            return False
+
+# ==========================================
+# AUTHENTICATION FLOWS
+# ==========================================
+
 def send_otp_email(to_email, otp):
-    msg = MIMEMultipart()
-    msg['From'] = f"AI Project Mentor <{mail_email}>"
-    msg['To'] = to_email
-    msg['Subject'] = "Your Verification Code - AI Project Mentor"
     body = f"<h2>Welcome!</h2><p>Your verification code is:</p><h1>{otp}</h1>"
-    msg.attach(MIMEText(body, 'html'))
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(mail_email, mail_password)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Email sending failed: {e}")
-        return False
+    return _send_email(to_email, "Your Verification Code - AI Project Mentor", body)
 
 def check_email_exists(email):
     conn = get_db()
@@ -126,12 +169,11 @@ def update_user_profile(user_id, full_name, degree_level, department, skills_lis
         cursor.close()
         conn.close()
 
+# ==========================================
+# NOTIFICATION EMAILS
+# ==========================================
+
 def send_project_started_email(to_email, user_name, project_title, duration_weeks):
-    msg = MIMEMultipart()
-    msg['From'] = f"AI Project Mentor <{mail_email}>"
-    msg['To'] = to_email
-    msg['Subject'] = f"🚀 Project Started: {project_title}"
-    
     body = f"""
     <h2>Hi {user_name},</h2>
     <p>You have successfully started <strong>{project_title}</strong>!</p>
@@ -140,25 +182,9 @@ def send_project_started_email(to_email, user_name, project_title, duration_week
     <br>
     <p>Best of luck,<br>AI Project Mentor</p>
     """
-    msg.attach(MIMEText(body, 'html'))
-    
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(mail_email, mail_password)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Email sending failed: {e}")
-        return False
+    return _send_email(to_email, f"🚀 Project Started: {project_title}", body)
 
 def send_urgent_reminder_email(to_email, user_name, reminder_title, due_date):
-    msg = MIMEMultipart()
-    msg['From'] = f"AI Project Mentor <{mail_email}>"
-    msg['To'] = to_email
-    msg['Subject'] = f"⚠️ Urgent Reminder: {reminder_title}"
-    
     body = f"""
     <h2>Hi {user_name},</h2>
     <p>This is a gentle nudge to keep you on track.</p>
@@ -167,15 +193,4 @@ def send_urgent_reminder_email(to_email, user_name, reminder_title, due_date):
     <br>
     <p>You can do it,<br>AI Project Mentor</p>
     """
-    msg.attach(MIMEText(body, 'html'))
-    
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(mail_email, mail_password)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Email sending failed: {e}")
-        return False
+    return _send_email(to_email, f"⚠️ Urgent Reminder: {reminder_title}", body)
