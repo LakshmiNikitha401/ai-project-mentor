@@ -5,16 +5,17 @@ import numpy as np
 from psycopg2.extras import RealDictCursor
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from dotenv import load_dotenv
 
 load_dotenv()
 db_url = os.environ.get("DATABASE_URL")
 
-# Load the Semantic Model and Embeddings globally so they stay in memory
-print("⏳ Loading Sentence-BERT model...")
-semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Load FastEmbed model lazily to save memory on startup
+print("⏳ Loading FastEmbed model...")
+semantic_model = None
 embeddings_data = None
+
 try:
     with open('project_embeddings.pkl', 'rb') as f:
         embeddings_data = pickle.load(f)
@@ -24,6 +25,15 @@ except FileNotFoundError:
 
 def get_db():
     return psycopg2.connect(db_url)
+
+def get_semantic_model():
+    global semantic_model
+    if semantic_model is None:
+        print("⏳ Initializing FastEmbed model...")
+        # Default model is BAAI/bge-small-en-v1.5 (384 dims) [citation:1]
+        semantic_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        print("✅ FastEmbed model ready.")
+    return semantic_model
 
 def search_projects(query, domain_filter=None, difficulty_filter=None, duration_filter=None, team_size_filter=None):
     conn = get_db()
@@ -75,7 +85,6 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
         except ValueError:
             pass
             
-    # Execute SQL
     try:
         cursor.execute(sql, params)
         projects = cursor.fetchall()
@@ -89,7 +98,6 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
     if not projects:
         return []
 
-    # If no query, return them sorted by duration
     if not query or not query.strip():
         for p in projects:
             p["difficulty"] = str(p.get("difficulty", "")).capitalize()
@@ -100,9 +108,16 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
     q_lower = query.lower()
     results = []
     
-    # 1. Prepare Semantic Search
-    query_embedding = semantic_model.encode([q_lower])
-    
+    # 1. Get Query Embedding from FastEmbed
+    query_embedding = None
+    if embeddings_data:
+        try:
+            model = get_semantic_model()
+            # FastEmbed returns a generator, so we convert to list and get the first item
+            query_embedding = list(model.embed([q_lower]))[0]
+        except Exception as e:
+            print(f"❌ FastEmbed error: {e}")
+
     # 2. Prepare TF-IDF
     corpus = [f"{p['title']} {p['description']} {p.get('domain', '')} {p.get('skills', '')}".lower() for p in projects]
     vectorizer = TfidfVectorizer(stop_words='english')
@@ -118,43 +133,32 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
         proj_dict = dict(project)
         proj_id = proj_dict['id']
         
-        # Calculate Semantic Score
-        semantic_score = 0
-        if embeddings_data:
+        semantic_score_pct = 0
+        if query_embedding is not None and embeddings_data:
             try:
-                # Find the index of this project in the embeddings file
                 idx = embeddings_data['ids'].index(proj_id)
                 proj_embedding = embeddings_data['embeddings'][idx]
-                # Calculate cosine similarity between query and project
-                semantic_score = np.dot(query_embedding, proj_embedding) / (np.linalg.norm(query_embedding) * np.linalg.norm(proj_embedding))
-            except ValueError:
+                # Ensure both are numpy arrays for dot product
+                q_emb = np.array(query_embedding)
+                p_emb = np.array(proj_embedding)
+                semantic_score = np.dot(q_emb, p_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(p_emb))
+                semantic_score_pct = float(semantic_score) * 100
+            except (ValueError, IndexError):
                 pass
         
-        # Normalize scores to 0-100
         tfidf_score_pct = tfidf_scores[i] * 100
-        semantic_score_pct = float(semantic_score[0] * 100) if isinstance(semantic_score, np.ndarray) else float(semantic_score * 100)
         
-        # Hybrid Formula: 60% Semantic, 40% TF-IDF (Weights can be adjusted)
-        final_score = (semantic_score_pct * 0.6) + (tfidf_score_pct * 0.4)
+        # If semantic is missing, rely 100% on TF-IDF
+        if semantic_score_pct == 0:
+            final_score = tfidf_score_pct
+        else:
+            final_score = (semantic_score_pct * 0.6) + (tfidf_score_pct * 0.4)
         
         proj_dict["match_score"] = round(final_score, 1)
         proj_dict["difficulty"] = str(proj_dict.get("difficulty", "")).capitalize()
-        
-        # Explainability
-        if semantic_score_pct > 50:
-            proj_dict["match_reason"] = "High semantic relevance to your idea."
-        elif tfidf_score_pct > 30:
-            proj_dict["match_reason"] = "Matches keywords in your search."
-            
         results.append(proj_dict)
 
-    # Sort by the combined score
     results = sorted(results, key=lambda x: x["match_score"], reverse=True)
-    
-    # Filter out poor matches if we have enough good ones
-    if len(results) > 10:
-        results = [r for r in results if r["match_score"] > 10]
-
     return results
 
 def get_project_by_id(project_id):
