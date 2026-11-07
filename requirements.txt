@@ -3,14 +3,14 @@ psycopg2-binary
 python-dotenv
 requests
 scikit-learn
-sentence-transformers
 pandas
 numpy
 markdown
 PyPDF2
 python-docx
 reportlab
+gunicorn
+fastembed
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
-gunicorn
