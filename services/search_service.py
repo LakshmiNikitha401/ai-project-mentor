@@ -2,6 +2,7 @@ import os
 import psycopg2
 import pickle
 import numpy as np
+import requests
 from psycopg2.extras import RealDictCursor
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -11,30 +12,56 @@ from dotenv import load_dotenv
 load_dotenv()
 db_url = os.environ.get("DATABASE_URL")
 
-# Load FastEmbed model lazily to save memory on startup
-print("⏳ Loading FastEmbed model...")
-semantic_model = None
+# =====================================================================
+# 1. EMBEDDINGS DOWNLOAD & LOADING LOGIC
+# =====================================================================
+# PASTE YOUR SUPABASE PUBLIC URL HERE
+EMBEDDINGS_URL = "https://kqmxnbeisjdkmwdipyfl.supabase.co/storage/v1/object/public/embeddings/project_embeddings.pkl"
+EMBEDDINGS_FILE = "project_embeddings.pkl"
+
+print("⏳ Loading Semantic Search Engine...")
+
+# Download the file if it doesn't exist locally (Render environment)
+if not os.path.exists(EMBEDDINGS_FILE):
+    print("⬇️ Embeddings file not found locally. Downloading from Supabase Storage...")
+    try:
+        response = requests.get(EMBEDDINGS_URL, stream=True, timeout=30)
+        response.raise_for_status()
+        with open(EMBEDDINGS_FILE, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print("✅ Embeddings downloaded successfully.")
+    except Exception as e:
+        print(f"❌ Failed to download embeddings: {e}. Semantic search will be disabled.")
+
+# Load the pickle file
 embeddings_data = None
-
 try:
-    with open('project_embeddings.pkl', 'rb') as f:
-        embeddings_data = pickle.load(f)
-    print("✅ Semantic embeddings loaded successfully.")
-except FileNotFoundError:
-    print("⚠️ Warning: project_embeddings.pkl not found. Run generate_embeddings.py first!")
+    if os.path.exists(EMBEDDINGS_FILE):
+        with open(EMBEDDINGS_FILE, 'rb') as f:
+            embeddings_data = pickle.load(f)
+        print("✅ Semantic embeddings loaded into memory.")
+    else:
+        print("⚠️ Warning: project_embeddings.pkl is missing. Falling back to TF-IDF only.")
+except Exception as e:
+    print(f"⚠️ Error loading embeddings: {e}. Falling back to TF-IDF only.")
 
-def get_db():
-    return psycopg2.connect(db_url)
-
+# Lazy load the FastEmbed model to save memory
+semantic_model = None
 def get_semantic_model():
     global semantic_model
     if semantic_model is None:
         print("⏳ Initializing FastEmbed model...")
-        # Default model is BAAI/bge-small-en-v1.5 (384 dims) [citation:1]
         semantic_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
         print("✅ FastEmbed model ready.")
     return semantic_model
 
+def get_db():
+    return psycopg2.connect(db_url)
+
+# =====================================================================
+# 2. MAIN SEARCH FUNCTION
+# =====================================================================
 def search_projects(query, domain_filter=None, difficulty_filter=None, duration_filter=None, team_size_filter=None):
     conn = get_db()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -85,6 +112,7 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
         except ValueError:
             pass
             
+    # Execute SQL
     try:
         cursor.execute(sql, params)
         projects = cursor.fetchall()
@@ -98,22 +126,24 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
     if not projects:
         return []
 
+    # If no query, return them sorted by duration
     if not query or not query.strip():
         for p in projects:
             p["difficulty"] = str(p.get("difficulty", "")).capitalize()
         projects.sort(key=lambda x: x.get("duration_weeks", 99))
         return [dict(p, match_score=0, match_reason="Matches your filters.") for p in projects]
 
-    # --- HYBRID SCORING ---
+    # =====================================================================
+    # 3. HYBRID SCORING (SEMANTIC + TF-IDF)
+    # =====================================================================
     q_lower = query.lower()
     results = []
     
-    # 1. Get Query Embedding from FastEmbed
+    # 1. Get Query Embedding (FastEmbed)
     query_embedding = None
     if embeddings_data:
         try:
             model = get_semantic_model()
-            # FastEmbed returns a generator, so we convert to list and get the first item
             query_embedding = list(model.embed([q_lower]))[0]
         except Exception as e:
             print(f"❌ FastEmbed error: {e}")
@@ -138,7 +168,8 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
             try:
                 idx = embeddings_data['ids'].index(proj_id)
                 proj_embedding = embeddings_data['embeddings'][idx]
-                # Ensure both are numpy arrays for dot product
+                
+                # Cosine Similarity
                 q_emb = np.array(query_embedding)
                 p_emb = np.array(proj_embedding)
                 semantic_score = np.dot(q_emb, p_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(p_emb))
@@ -152,6 +183,7 @@ def search_projects(query, domain_filter=None, difficulty_filter=None, duration_
         if semantic_score_pct == 0:
             final_score = tfidf_score_pct
         else:
+            # 60% Semantic, 40% TF-IDF
             final_score = (semantic_score_pct * 0.6) + (tfidf_score_pct * 0.4)
         
         proj_dict["match_score"] = round(final_score, 1)
