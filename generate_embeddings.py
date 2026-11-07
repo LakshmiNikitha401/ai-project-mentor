@@ -1,11 +1,13 @@
 import psycopg2
 import pandas as pd
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 import pickle
 import time
+import os
+from dotenv import load_dotenv
 
-# Your Supabase URL
-db_url = "postgresql://postgres.kqmxnbeisjdkmwdipyfl:ProjectGuide.2026@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+load_dotenv()
+db_url = os.environ.get("DATABASE_URL")
 
 def generate():
     print("⏳ Connecting to database...")
@@ -17,25 +19,21 @@ def generate():
     
     print(f"✅ Fetched {len(df)} projects.")
     
-    # Convert lists to strings safely before combining
     df['skills'] = df['skills'].apply(lambda x: " ".join(x) if isinstance(x, list) else str(x))
-    
-    # Combine text fields into one string for the AI to read
     df['text_to_embed'] = df['title'].fillna('') + " " + \
                           df['description'].fillna('') + " " + \
                           df['domain'].fillna('') + " " + \
                           df['skills'].fillna('')
                           
-    print("🧠 Loading Sentence-BERT model (all-MiniLM-L6-v2)...")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    print("🧠 Loading FastEmbed model (BAAI/bge-small-en-v1.5)...")
+    model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
     
     print("⚙️ Generating embeddings (this might take 1-2 minutes)...")
     start_time = time.time()
     
-    # Convert all text to vectors
-    embeddings = model.encode(df['text_to_embed'].tolist(), show_progress_bar=True)
+    # FastEmbed returns a generator, so we convert to list
+    embeddings = list(model.embed(df['text_to_embed'].tolist()))
     
-    # Save the embeddings and the project IDs to a file
     with open('project_embeddings.pkl', 'wb') as f:
         pickle.dump({
             'ids': df['id'].tolist(),
